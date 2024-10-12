@@ -1,23 +1,16 @@
-import firebase_admin
-from firebase_admin import auth, credentials, firestore, initialize_app
-from flask import Flask, Blueprint, request, jsonify, render_template, redirect, url_for, Response
-from flask_cors import CORS
-import json
-import pyrebase
-from datetime import datetime, timezone
-import os
-# from twilio.rest import Client
-# from twilio.twiml.voice_response import VoiceResponse, Pause
-import urllib.parse
-import random
-import bcrypt
-import pytz
-import tzlocal
-import time
+from decimal import Decimal
 import statistics
+import threading
+import time
+import boto3
+from flask import Flask, Blueprint, request, jsonify, render_template, redirect, url_for,send_file, Response
+from flask_cors import CORS
+from boto3.dynamodb.conditions import Key, Attr
+from datetime import datetime, timezone
+import pytz
 import pandas as pd
 import numpy as np
-from keras.models import load_model
+from tensorflow.keras.models import load_model
 import joblib
 import matplotlib
 matplotlib.use('Agg')
@@ -26,43 +19,18 @@ import matplotlib.dates as mdates
 from datetime import datetime, timedelta
 import pytz
 from matplotlib.figure import Figure
-import io
+import io  
+import base64
+from data_faker import add_pressure_data  # Import add_pressure_data function
 
-
-"""
-This is the backend code for the I-Sole web application currently hosted on https://i-sole.site/.
-
-The functionalities this backend supports are:
-
-1. Authetication for login/signup
-2. Thread-like chatting functionality
-3. User Twilio to make emergency calls to patient's notifiers
-4. Generates and returns patient's data analytics for Dashboard
-5. Retrieve and store data in Firebase Database (NoSQL)
-"""
-
-"""App Config Setup"""
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": ["https://zeeshansalim1234.github.io"]}})
+CORS(app, resources={r"/*": {"origins": "*"}})
 
-cred = credentials.Certificate("i-sole-new-firebase-adminsdk-x1ipo-fe08e91d7d.json")
-firebase_admin.initialize_app(cred)
-# account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
-# auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
+dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
+users_table = dynamodb.Table('I-sole-users')
+device_data_table = dynamodb.Table('I-sole-device-data')
 
-db=firestore.client()
-# client = Client(account_sid, auth_token)
-
-"""Setup Flask Endpoints"""
-
-@app.route('/initialize_counter', methods=['POST'])
-def initialize_counter():
-    # This is necessary to keep track of the number of active threads in the chat section
-    data = request.json
-    username = data['username']
-    initialize_user_thread_counter(username)
-    return jsonify({"success": True})
 
 @app.route('/signup', methods=['POST'])
 def signup():
@@ -72,41 +40,33 @@ def signup():
         username = signup_data['username']
         email = signup_data['email']
         full_name = signup_data['fullName']
-        role = signup_data['role']
         password = signup_data['password']
-        patient_id = signup_data.get('patientID', None)  # Optional field
 
-        # Hash the password for security
-        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+        # Create a new item in the DynamoDB table
+        users_table.put_item(
+            Item={
+                'username': username,
+                'email': email,
+                'name': full_name,
+                'password': password,
+                'personal_metrics': {}  # Add an empty personal_metrics object
+            }
+        )
 
-         # Check if the role is 'Patient' and generate a unique patientID
-        if role == 'Patient':
-            patient_id = generate_unique_patient_id()
-            update_id_map(patient_id, username)
-
-        if role == 'Doctor': # add this doct as `myDoctor` for the patient profile
-            add_doctor(get_username_from_patient_id(patient_id), username)
-
-        # Create a reference to the Firestore document
-        user_ref = db.collection('users').document(username)
-
-        # Create a new document with the provided data
-        user_ref.set({
-            'email': email,
-            'fullName': full_name,
-            'username': username,
-            'role': role,
-            'password': hashed_password.decode('utf-8'),  # Store hashed password as a string
-            'patientID': patient_id
-        })
-
-        user_data = user_ref.get().to_dict()
+        # Fetch the user data to return in the response
+        response = users_table.get_item(
+            Key={
+                'username': username
+            }
+        )
+        user_data = response.get('Item', {})
 
         return jsonify({"success": True, "message": "User created successfully", 'user_data': user_data}), 201
 
     except Exception as e:
-        # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
+    
+
 
 
 @app.route('/signin', methods=['POST'])
@@ -116,237 +76,27 @@ def signin():
         signin_data = request.json
         username = signin_data['username']
         password = signin_data['password']
-        entered_password = signin_data['password'].encode('utf-8')  # Encode the entered password
 
-        # Reference to the Firestore document of the user
-        user_ref = db.collection('users').document(username)
+        # Fetch the user's data from the DynamoDB table
+        response = users_table.get_item(
+            Key={
+                'username': username
+            }
+        )
+        user_data = response.get('Item', {})
 
-        # Attempt to get the document
-        user_doc = user_ref.get()
-
-        # Check if the document exists and if the password matches
-        if user_doc.exists:
-            user_data = user_doc.to_dict()
-            stored_password = user_data['password'].encode('utf-8')  # Encode the stored password
-
-            # Compare the entered password with the stored hash
-            if bcrypt.checkpw(entered_password, stored_password):
-                # Authentication successful
-                return jsonify({"success": True, "message": "User signed in successfully", "user_data": user_data}), 200
-            else:
-                # Authentication failed
-                return jsonify({"success": False, "message": "Incorrect password"}), 401
+        # Check if the user exists and if the password matches
+        if user_data and password == user_data.get('password'):
+            # Authentication successful
+            return jsonify({"success": True, "message": "User signed in successfully", "user_data": user_data}), 200
         else:
-            # User not found
-            return jsonify({"success": False, "message": "User not found"}), 404
+            # Authentication failed
+            return jsonify({"success": False, "message": "Incorrect username or password"}), 401
 
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
 
-
-@app.route('/get_username_by_patient_id/<patient_id>', methods=['GET'])
-def get_username_by_patient_id(patient_id):
-    try:
-        # Retrieve the username mapped to the patient_id
-        username = get_username_from_patient_id(patient_id)
-        if username:
-            return jsonify({"success": True, "username": username}), 200
-        else:
-            return jsonify({"success": False, "message": "Username not found for the given patient ID"}), 404
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
-
-
-@app.route('/start_new_thread', methods=['POST'])
-def start_thread():
-    # Initializes a new thread to Firebase DB
-    data = request.json
-    username = data['username']
-    sender = data['sender']
-    message = data['message']
-    start_new_thread_with_message(username, message, sender)
-    return jsonify({"success": True})
-
-@app.route('/add_message', methods=['POST'])
-def add_message():
-    # Appends a message to existing thread in Firebase DB
-    data = request.json
-    username = data['username']
-    index = data['index']
-    message = data['message']
-    sender = data['sender']
-    add_message_to_conversation(username, index, message, sender)
-    return jsonify({"success": True})
-
-@app.route('/get_all_conversations/<username>', methods=['GET'])
-def get_all(username):
-    # Returns all threads for the specific user
-    conversations = get_all_conversations(username)
-    return jsonify(conversations)
-
-@app.route('/get_one_conversation/<username>/<int:index>', methods=['GET'])
-def get_one(username, index):
-    # Returns 1 thread for which 'index' is passed, for the provided 'username'
-    conversation = get_one_conversation(username, index)
-    if conversation is not None:
-        return jsonify(conversation)
-    else:
-        return jsonify({"error": "Conversation not found"}), 404
-
-
-@app.route('/add_contact', methods=['POST'])
-def add_contact():
-    # Stores a new emergency contact for the current user in the Firebase DB
-    try:
-        # Parse the request data
-        data = request.get_json()
-        username = data['username']  # Make sure to send 'username' in your request payload
-        new_contact = data['newContact']
-        contact_info = {
-            'name': new_contact['contactName'],
-            'relationship': new_contact['relationship'],
-            'phone_number': new_contact['phoneNumber'],
-            'email': new_contact.get('email', None),  # Optional field
-            'glucose_level_alert': new_contact['glucoseAlert'],
-            'medication_reminder': new_contact['medicationReminder']
-        }
-        
-        # Add a new contact document to the 'contacts' subcollection
-        contact_ref = db.collection('users').document(username).collection('contacts').document()
-        contact_ref.set(contact_info)
-        
-        # Return success response
-        return jsonify({"success": True}), 200
-    
-    except Exception as e:
-        app.logger.error(f"An error occurred: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route('/delete_contact', methods=['POST'])
-def delete_contact():
-    # Deletes an existing emergency contact for the current user from the Firebase DB
-    try:
-        # Parse the request data
-        data = request.get_json()
-        username = data['username']  # Username to identify the user's document
-        contact_name = data['contactName']  # Contact name to identify the contact document
-
-        # Query the contacts subcollection for the user to find the contact document
-        contacts_ref = db.collection('users').document(username).collection('contacts')
-        contacts = contacts_ref.where('name', '==', contact_name).stream()
-
-        # Delete the contact document(s)
-        for contact in contacts:
-            contact_ref = contacts_ref.document(contact.id)
-            contact_ref.delete()
-
-        # Return success response
-        return jsonify({"success": True, "message": "Contact deleted successfully"}), 200
-
-    except Exception as e:
-        return jsonify({"success": False, "message": f"An error occurred: {e}"}), 500
-
-
-@app.route('/get_my_doctor/<username>', methods=['GET'])
-def get_my_doctor(username):
-    # Returns the 'doctorName' for the provided 'patientName'
-    try:
-        # Reference to the Firestore document of the user
-        user_ref = db.collection('users').document(username)
-
-        # Get the user document data
-        user_doc = user_ref.get()
-
-        # Check if the document exists and has the 'myDoctor' field
-        if user_doc.exists:
-            user_data = user_doc.to_dict()
-            my_doctor = user_data.get('myDoctor')
-            if my_doctor:
-                print(my_doctor)
-                return jsonify({"success": True, "myDoctor": my_doctor}), 200
-            else:
-                return jsonify({"success": False, "message": "myDoctor not found for the user"}), 404
-        else:
-            return jsonify({"success": False, "message": "User not found"}), 404
-
-    except Exception as e:
-        # Handle exceptions
-        return jsonify({"success": False, "message": str(e)}), 500
-
-
-@app.route('/get_all_contacts/<username>', methods=['GET'])
-def get_all_contacts(username):
-    # Returns all emergency contact for the provided username
-    try:
-        # Query the contacts subcollection for the given user
-        contacts_ref = db.collection('users').document(username).collection('contacts')
-        contacts_query = contacts_ref.stream()
-
-        # Collect contact data from the documents
-        contacts = []
-        for contact_doc in contacts_query:
-            contact_info = contact_doc.to_dict()
-            contact_info['id'] = contact_doc.id  # Optionally include the document ID
-            contacts.append(contact_info)
-
-        # Return the contacts in the response
-        return jsonify({"success": True, "contacts": contacts}), 200
-
-    except Exception as e:
-        return jsonify({"success": False, "message": f"An error occurred: {e}"}), 500
-
-
-# @app.route("/make_call", methods=['GET', 'POST'])
-# def make_call():
-#     # This essentially sets up the config necessary for making a Twilio call via /voice
-
-#     # Get the 'to' phone number and the message from URL parameters
-#     if request.method == 'POST':
-#         data = request.json
-#         to_number = data.get('to')
-#         message = data.get('message', 'This is a default message')
-#     else:
-#         to_number = request.values.get('to')
-#         encoded_message = request.values.get('message', 'This is a default message')
-#         message = urllib.parse.unquote(encoded_message)
-
-#     print('Hello World')
-
-#     # Create a callback URL for the voice response
-#     callback_url = "https://i-sole-backend.com/voice?message=" + urllib.parse.quote(message)
-
-#     # Make the call using Twilio client
-#     try:
-#         call = client.calls.create(
-#             to=to_number,
-#             from_="+18254351557",
-#             url=callback_url,
-#             record=True
-#         )
-#         return f"Call initiated. SID: {call.sid}"
-#     except Exception as e:
-#         return f"Error: {e}"
-
-# @app.route("/voice", methods=['GET', 'POST'])
-# def voice():
-#     # Leverages Twilio API to call patient's emergency contact
-
-#     # Get the message from the URL parameter
-#     message = request.values.get('message', 'This is a default message')
-    
-#     # Create a VoiceResponse object
-#     response = VoiceResponse()
-
-#     # Split the message by lines and process each line
-#     for line in message.split('\n'):
-#         response.say(line, voice='Polly.Joanna-Neural', language='en-US')
-#         if line.strip().endswith('?'):
-#             response.append(Pause(length=3))
-
-#     # Return the TwiML as a string
-#     return Response(str(response), mimetype='text/xml')
 
 
 @app.route('/add_pressure_value/<username>', methods=['POST'])
@@ -359,21 +109,23 @@ def add_pressure_value(username):
         if pressure_value is None:
             return jsonify({"success": False, "message": "Pressure value not provided"}), 400
 
-        # Reference to the Firestore document of the user
-        user_ref = db.collection('users').document(username)
+        # Get current timestamp
+        current_time = datetime.now().isoformat()
 
-        # Add pressure value to user's pressureData collection
-        user_ref.collection('pressureData').add({
-            'pressure': pressure_value,
-            'timestamp': firestore.SERVER_TIMESTAMP
-        })
+        # Add pressure value to the device_data_table in DynamoDB
+        device_data_table.put_item(
+            Item={
+                'username': username,
+                'timestamp': current_time,
+                'pressure': pressure_value
+            }
+        )
 
         return jsonify({"success": True, "message": "Pressure value added successfully"}), 200
 
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-
 
 @app.route('/get_pressure_data/<username>', methods=['GET'])
 def get_pressure_data(username):
@@ -382,27 +134,17 @@ def get_pressure_data(username):
         start_timestamp_str = request.args.get('start')
         end_timestamp_str = request.args.get('end')
 
-        # Convert timestamps to datetime objects
-        start_timestamp = datetime.fromisoformat(start_timestamp_str)
-        end_timestamp = datetime.fromisoformat(end_timestamp_str)
+        # Query pressure data from the device_data_table in DynamoDB
+        response = device_data_table.query(
+            KeyConditionExpression=Key('username').eq(username) & Key('timestamp').between(start_timestamp_str, end_timestamp_str)
+        )
 
-        # Reference to the Firestore document of the user
-        user_ref = db.collection('users').document(username)
-
-        # Get pressure data collection for the user
-        pressure_data_ref = user_ref.collection('pressureData')
-
-        # Query pressure data collection within the specified time range
-        pressure_data_docs = pressure_data_ref.where('timestamp', '>=', start_timestamp)\
-                                              .where('timestamp', '<=', end_timestamp)\
-                                              .order_by('timestamp')\
-                                              .get()
-
+        # Process the response
         pressure_data = []
-        for doc in pressure_data_docs:
+        for item in response['Items']:
             pressure_data.append({
-                'pressure': doc.get('pressure'),
-                'timestamp': doc.get('timestamp')
+                'pressure': item['pressure'],
+                'timestamp': item['timestamp']
             })
 
         return jsonify({"success": True, "pressureData": pressure_data}), 200
@@ -410,6 +152,7 @@ def get_pressure_data(username):
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
+
 
 @app.route('/add_glucose_value/<username>', methods=['POST'])
 def add_glucose_value(username):
@@ -421,21 +164,24 @@ def add_glucose_value(username):
         if glucose_value is None:
             return jsonify({"success": False, "message": "Glucose value not provided"}), 400
 
-        # Reference to the Firestore document of the user
-        user_ref = db.collection('users').document(username)
+        # Get current timestamp
+        current_time = datetime.now().isoformat()
 
-        # Add glucose value to user's glucoseData collection
-        user_ref.collection('glucoseData').add({
-            'glucose': glucose_value,
-            'timestamp': firestore.SERVER_TIMESTAMP
-        })
+        # Add glucose value to the device_data_table in DynamoDB
+        device_data_table.put_item(
+            Item={
+                'username': username,
+                'timestamp': current_time,
+                'glucose_value': glucose_value
+            }
+        )
 
         return jsonify({"success": True, "message": "Glucose value added successfully"}), 200
 
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-
+    
 
 @app.route('/get_glucose_data/<username>', methods=['GET'])
 def get_glucose_data(username):
@@ -444,27 +190,17 @@ def get_glucose_data(username):
         start_timestamp_str = request.args.get('start')
         end_timestamp_str = request.args.get('end')
 
-        # Convert timestamps to datetime objects
-        start_timestamp = datetime.fromisoformat(start_timestamp_str)
-        end_timestamp = datetime.fromisoformat(end_timestamp_str)
+        # Query glucose data from the glucose_data_table in DynamoDB
+        response = device_data_table.query(
+            KeyConditionExpression=Key('username').eq(username) & Key('timestamp').between(start_timestamp_str, end_timestamp_str)
+        )
 
-        # Reference to the Firestore document of the user
-        user_ref = db.collection('users').document(username)
-
-        # Get glucose data collection for the user
-        glucose_data_ref = user_ref.collection('glucoseData')
-
-        # Query glucose data collection within the specified time range
-        glucose_data_docs = glucose_data_ref.where('timestamp', '>=', start_timestamp)\
-                                              .where('timestamp', '<=', end_timestamp)\
-                                              .order_by('timestamp')\
-                                              .get()
-
+        # Process the response
         glucose_data = []
-        for doc in glucose_data_docs:
+        for item in response['Items']:
             glucose_data.append({
-                'glucose': doc.get('glucose'),
-                'timestamp': doc.get('timestamp')
+                'glucose': item['glucose'],
+                'timestamp': item['timestamp']
             })
 
         return jsonify({"success": True, "glucoseData": glucose_data}), 200
@@ -474,109 +210,65 @@ def get_glucose_data(username):
         return jsonify({"success": False, "message": str(e)}), 500
 
 
-@app.route('/add_meal/<username>', methods=['POST'])
-def add_meal(username):
-    try:
-        # Get meal data from request
-        meal_data = request.json
-
-        # Ensure required fields are provided
-        if 'meal_type' not in meal_data or 'meal_description' not in meal_data:
-            return jsonify({"success": False, "message": "Meal data incomplete"}), 400
-
-        # Reference to the Firestore document of the user
-        user_ref = db.collection('users').document(username)
-
-        # Add meal data to user's meals collection
-        user_ref.collection('meals').add({
-            'meal_type': meal_data['meal_type'],
-            'meal_description': meal_data['meal_description'],
-            'carbohydrate_intake': meal_data['carbohydrate_intake'],
-            'timestamp': firestore.SERVER_TIMESTAMP
-        })
-
-        return jsonify({"success": True, "message": "Meal added successfully"}), 200
-
-    except Exception as e:
-        # Handle exceptions
-        return jsonify({"success": False, "message": str(e)}), 500
-
-
-@app.route('/get_meals/<username>', methods=['GET'])
-def get_meals(username):
-    try:
-        # Get start and end timestamps from query parameters
-        start_timestamp_str = request.args.get('start')
-        end_timestamp_str = request.args.get('end')
-
-        # Convert timestamps to datetime objects
-        start_timestamp = datetime.fromisoformat(start_timestamp_str)
-        end_timestamp = datetime.fromisoformat(end_timestamp_str)
-
-        # Reference to the Firestore document of the user
-        user_ref = db.collection('users').document(username)
-
-        # Get meals collection for the user
-        meals_ref = user_ref.collection('meals')
-
-        # Query meals collection within the specified time range
-        meals_docs = meals_ref.where('timestamp', '>=', start_timestamp)\
-                              .where('timestamp', '<=', end_timestamp)\
-                              .order_by('timestamp', direction='DESCENDING')\
-                              .limit(10)\
-                              .get()
-
-        meals_data = []
-        for doc in meals_docs:
-            meals_data.append({
-                'meal_type': doc.get('meal_type'),
-                'timestamp': doc.get('timestamp'),
-                'meal_description': doc.get('meal_description')
-            })
-
-        return jsonify({"success": True, "mealsData": meals_data}), 200
-
-    except Exception as e:
-        # Handle exceptions
-        return jsonify({"success": False, "message": str(e)}), 500
-    
 
 @app.route('/add_blood_glucose_level', methods=['POST'])
 def add_blood_glucose_level():
     try:
         # Parse the request data
         username = request.json.get('username')
-        bloodGlucoseLevel = request.json.get('bloodGlucoseLevel')
-        
-        # Check if the document exists
-        personal_metrics_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        personal_info_data = personal_metrics_ref.get().to_dict()
-        
-        if personal_info_data:
-           personal_metrics_ref.update({'blood_glucose_level': bloodGlucoseLevel})
-           # Return success response
-           return jsonify({"success": True}), 200
+        blood_glucose_level = request.json.get('bloodGlucoseLevel')
 
+        # Fetch the user's data from the DynamoDB table
+        response = users_table.get_item(
+            Key={'username': username}
+        )
+        user_data = response.get('Item', {})
+
+        update_expression = ""
+        expression_attribute_values = {}
+
+        # Check if the 'personal_metrics' attribute exists, if not create it
+        if 'personal_metrics' not in user_data:
+            # Create 'personal_metrics' with the 'blood_glucose_level' field
+            update_expression = 'SET personal_metrics = :metrics'
+            expression_attribute_values = {':metrics': {'blood_glucose_level': blood_glucose_level}}
         else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document personal_info does not exist for user: " + username}), 404
-        
+            # Update the existing 'personal_metrics' with the new 'blood_glucose_level' field
+            update_expression = 'SET personal_metrics.blood_glucose_level = :glucose_level'
+            expression_attribute_values = {':glucose_level': blood_glucose_level}
+
+        # Update the 'blood_glucose_level' attribute in the 'users' table in DynamoDB
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression=update_expression,
+            ExpressionAttributeValues=expression_attribute_values,
+            ReturnValues='ALL_NEW'  # Return the updated item
+        )
+
+        # Get the updated item from the response
+        updated_item = response.get('Attributes', {})
+
+        # Return success response with the updated item
+        return jsonify({"success": True, "message": "Blood glucose level added successfully", "updated_item": updated_item}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-        
+    
+
 @app.route('/get_blood_glucose_level/<username>', methods=['GET'])
 def get_blood_glucose_level(username):
     try:
-        # Reference to the Firestore document of the user
-        user_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        # Get the user document data
-        user_doc = user_ref.get()
-        # Check if the document exists
-        if user_doc.exists:
-            # Get specific field from user document data
-            user_data = user_doc.to_dict()
-            blood_glucose_level = user_data.get('blood_glucose_level')
+        # Fetch the user's data from the DynamoDB table
+        response = users_table.get_item(
+            Key={'username': username}
+        )
+        user_data = response.get('Item', {})
+
+        # Check if the user exists
+        if user_data:
+            # Get the blood_glucose_level from the user's personal_metrics
+            blood_glucose_level = user_data.get('personal_metrics', {}).get('blood_glucose_level')
             return jsonify({"success": True, "data": {"blood_glucose_level": blood_glucose_level}}), 200
         else:
             return jsonify({"success": False, "message": "User not found"}), 404
@@ -584,388 +276,598 @@ def get_blood_glucose_level(username):
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-
+    
 @app.route('/update_predicted_hypoglycemia', methods=['POST'])
 def update_predicted_hypoglycemia():
     try:
         # Parse the request data
         username = request.json.get('username')
         predicted_hypoglycemia = request.json.get('predicted_hypoglycemia')
-        # Check if the document exists
-        personal_metrics_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        personal_info_data = personal_metrics_ref.get().to_dict()
-        if personal_info_data:
-           personal_metrics_ref.update({'predicted_hypoglycemia': predicted_hypoglycemia})
-           # Return success response
-           return jsonify({"success": True}), 200
+
+        # Check if the user exists in DynamoDB
+        response = users_table.get_item(
+            Key={'username': username}
+        )
+        user_data = response.get('Item')
+
+        if user_data:
+            # Update the 'predicted_hypoglycemia' attribute in the 'users' table in DynamoDB
+            response = users_table.update_item(
+                Key={'username': username},
+                UpdateExpression='SET personal_metrics.predicted_hypoglycemia = :predicted_hypoglycemia',
+                ExpressionAttributeValues={':predicted_hypoglycemia': predicted_hypoglycemia},
+                ReturnValues='ALL_NEW'  # Return the updated item
+            )
+            
+            # Get the updated item from the response
+            updated_item = response.get('Attributes', {})
+
+            # Return success response with the updated item
+            return jsonify({"success": True, "message": "Predicted hypoglycemia updated successfully", "updated_item": updated_item}), 200
         else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document personal_info does not exist for user: " + username}), 404
-        
+            # User doesn't exist, return error response
+            return jsonify({"success": False, "message": "User not found: " + username}), 404
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
 
+
+
 @app.route('/get_predicted_hypoglycemia/<username>', methods=['GET'])
 def get_predicted_hypoglycemia(username):
     try:
-        # Reference to the Firestore document of the user
-        user_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        # Get the user document data
-        user_doc = user_ref.get()
-        # Check if the document exists
-        if user_doc.exists:
-            # Get specific field from user document data
-            user_data = user_doc.to_dict()
-            predicted_hypoglycemia = user_data.get('predicted_hypoglycemia')
-            return jsonify({"success": True, "data": {"predicted_hypoglycemia": predicted_hypoglycemia}}), 200
+        # Query the DynamoDB table for the user data
+        response = users_table.get_item(
+            Key={'username': username}
+        )
+        
+        # Check if the user exists
+        if 'Item' in response:
+            user_data = response['Item']
+            predicted_hypoglycemia = user_data.get('personal_metrics', {}).get('predicted_hypoglycemia')
+            
+            if predicted_hypoglycemia is not None:
+                return jsonify({"success": True, "data": {"predicted_hypoglycemia": predicted_hypoglycemia}}), 200
+            else:
+                return jsonify({"success": False, "message": "Predicted hypoglycemia data not found"}), 404
         else:
             return jsonify({"success": False, "message": "User not found"}), 404
 
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
+
+
 @app.route('/update_predicted_hyperglycemia', methods=['POST'])
 def update_predicted_hyperglycemia():
     try:
         # Parse the request data
         username = request.json.get('username')
         predicted_hyperglycemia = request.json.get('predicted_hyperglycemia')
-        # Check if the document exists
-        personal_metrics_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        personal_info_data = personal_metrics_ref.get().to_dict()
-        if personal_info_data:
-           personal_metrics_ref.update({'predicted_hyperglycemia': predicted_hyperglycemia})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document personal_info does not exist for user: " + username}), 404
-        
-    except Exception as e:
-        # Handle exceptions
-        return jsonify({"success": False, "message": str(e)}), 500
 
-@app.route('/get_predicted_hyperglycemia/<username>', methods=['GET'])
-def get_predicted_hyperglycemia(username):
-    try:
-        # Reference to the Firestore document of the user
-        user_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        # Get the user document data
-        user_doc = user_ref.get()
-        # Check if the document exists
-        if user_doc.exists:
-            # Get specific field from user document data
-            user_data = user_doc.to_dict()
-            predicted_hyperglycemia = user_data.get('predicted_hyperglycemia')
-            return jsonify({"success": True, "data": {"predicted_hyperglycemia": predicted_hyperglycemia}}), 200
-        else:
-            return jsonify({"success": False, "message": "User not found"}), 404
+        # Check if the user exists and get the current item
+        response = users_table.get_item(
+            Key={'username': username}
+        )
+        user_data = response.get('Item')
+
+        if not user_data:
+            return jsonify({"success": False, "message": f"User {username} does not exist"}), 404
+
+        # Update the 'predicted_hyperglycemia' attribute in the 'users' table in DynamoDB
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression='SET personal_metrics.predicted_hyperglycemia = :predicted_hypoglycemia',
+            ExpressionAttributeValues={':predicted_hypoglycemia': predicted_hyperglycemia},
+            ReturnValues='ALL_NEW'  # Return the updated item
+        )
+
+        # Get the updated item from the response
+        updated_item = response.get('Attributes', {})
+
+        # Return success response with the updated item
+        return jsonify({"success": True, "message": "Predicted hyperglycemia updated successfully", "updated_item": updated_item}), 200
 
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
     
+
+@app.route('/get_predicted_hyperglycemia/<username>', methods=['GET'])
+def get_predicted_hyperglycemia(username):
+    try:
+        # Fetch the user data from DynamoDB
+        response = users_table.get_item(
+            Key={'username': username}
+        )
+        user_data = response.get('Item')
+
+        # Check if the user exists
+        if not user_data:
+            return jsonify({"success": False, "message": f"User {username} not found"}), 404
+
+        # Get the predicted_hyperglycemia value from personal_metrics
+        predicted_hyperglycemia = user_data.get('personal_metrics', {}).get('predicted_hyperglycemia')
+
+        return jsonify({"success": True, "data": {"predicted_hyperglycemia": predicted_hyperglycemia}}), 200
+
+    except Exception as e:
+        # Handle exceptions
+        return jsonify({"success": False, "message": str(e)}), 500
+    
+
+
 @app.route('/update_height', methods=['POST'])
 def update_height():
     try:
         # Parse the request data
         username = request.json.get('username')
         height = request.json.get('height')
-        # Check if the document exists
-        personal_metrics_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        personal_info_data = personal_metrics_ref.get().to_dict()
-        if personal_info_data:
-           personal_metrics_ref.update({'height': height})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document personal_info does not exist for user: " + username}), 404
         
+        # Check if the user exists and get the current item
+        response = users_table.get_item(
+            Key={'username': username}
+        )
+        user_data = response.get('Item')
+
+        if not user_data:
+            return jsonify({"success": False, "message": f"User {username} does not exist"}), 404
+
+        
+        # Update the 'height' attribute in the 'users' table in DynamoDB
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression='SET personal_metrics.height = :height',
+            ExpressionAttributeValues={':height': height},
+            ReturnValues='ALL_NEW'  # Return the updated item
+        )
+        
+        # Get the updated item from the response
+        updated_item = response.get('Attributes', {})
+
+        # Return success response with the updated item
+        return jsonify({"success": True, "message": "Height updated successfully", "updated_item": updated_item}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
     
+
+from boto3.dynamodb.conditions import Key
+
 @app.route('/update_insulin_dosage', methods=['POST'])
 def update_insulin_dosage():
     try:
         # Parse the request data
         username = request.json.get('username')
         insulinDosage = request.json.get('insulinDosage')
-        # Check if the document exists
-        personal_metrics_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        personal_info_data = personal_metrics_ref.get().to_dict()
-        if personal_info_data:
-           personal_metrics_ref.update({'insulin_dosage': insulinDosage})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document personal_info does not exist for user: " + username}), 404
+
+        # Check if the user exists and get the current item
+        response = users_table.get_item(
+            Key={'username': username}
+        )
+        user_data = response.get('Item')
+
+        if not user_data:
+            return jsonify({"success": False, "message": f"User {username} does not exist"}), 404
+
+
+        # Update the 'insulin_dosage' attribute in the 'users' table in DynamoDB
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression='SET personal_metrics.insulin_dosage = :dosage',
+            ExpressionAttributeValues={':dosage': insulinDosage},
+            ReturnValues='ALL_NEW'  # Return the updated item
+        )
         
+        # Get the updated item from the response
+        updated_item = response.get('Attributes', {})
+
+        # Return success response with the updated item
+        return jsonify({"success": True, "message": "Insulin dosage updated successfully", "updated_item": updated_item}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
+
+
 @app.route('/update_allergies', methods=['POST'])
 def update_allergies():
     try:
         # Parse the request data
         username = request.json.get('username')
         allergies = request.json.get('allergies')
-        # Check if the document exists
-        personal_metrics_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        personal_info_data = personal_metrics_ref.get().to_dict()
-        if personal_info_data:
-           personal_metrics_ref.update({'allergies': allergies})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document personal_info does not exist for user: " + username}), 404
-        
+
+        # Check if the user exists and get the current item
+        response = users_table.get_item(
+            Key={'username': username}
+        )
+        user_data = response.get('Item')
+
+        if not user_data:
+            return jsonify({"success": False, "message": f"User {username} does not exist"}), 404
+
+
+        # Update the 'allergies' attribute in the 'users' table in DynamoDB
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression='SET personal_metrics.allergies = :allergies',
+            ExpressionAttributeValues={':allergies': allergies},
+            ReturnValues='ALL_NEW'  # Return the updated item
+        )
+
+        # Get the updated item from the response
+        updated_item = response.get('Attributes', {})
+
+        # Return success response with the updated item
+        return jsonify({"success": True, "message": "Allergies updated successfully", "updated_item": updated_item}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
     
+
+
 @app.route('/update_insulin_type', methods=['POST'])
 def update_insulin_type():
     try:
         # Parse the request data
         username = request.json.get('username')
         insulin_type = request.json.get('insulin_type')
-        # Check if the document exists
-        personal_metrics_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        personal_info_data = personal_metrics_ref.get().to_dict()
-        if personal_info_data:
-           personal_metrics_ref.update({'insulin_type': insulin_type})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document personal_info does not exist for user: " + username}), 404  
+
+        # Check if the user exists and get the current item
+        response = users_table.get_item(
+            Key={'username': username}
+        )
+        user_data = response.get('Item')
+
+        if not user_data:
+            return jsonify({"success": False, "message": f"User {username} does not exist"}), 404
+
+
+        # Update the 'insulin_type' attribute in the 'users' table in DynamoDB
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression='SET personal_metrics.insulin_type = :insulin_type',
+            ExpressionAttributeValues={':insulin_type': insulin_type},
+            ReturnValues='ALL_NEW'  # Return the updated item
+        )
+
+        # Get the updated item from the response
+        updated_item = response.get('Attributes', {})
+
+        # Return success response with the updated item
+        return jsonify({"success": True, "message": "Insulin type updated successfully", "updated_item": updated_item}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
+
 @app.route('/update_physical_activity', methods=['POST'])
 def update_physical_activity():
     try:
         # Parse the request data
         username = request.json.get('username')
         physical_activity = request.json.get('physical_activity')
-        # Check if the document exists
-        personal_metrics_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        personal_info_data = personal_metrics_ref.get().to_dict()
-        if personal_info_data:
-           personal_metrics_ref.update({'physical_activity': physical_activity})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document personal_info does not exist for user: " + username}), 404  
+
+        # Check if the user exists and get the current item
+        response = users_table.get_item(
+            Key={'username': username}
+        )
+        user_data = response.get('Item')
+
+        if not user_data:
+            return jsonify({"success": False, "message": f"User {username} does not exist"}), 404
+
+        # Update the 'physical_activity' attribute in the 'users' table in DynamoDB
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression='SET personal_metrics.physical_activity = :physical_activity',
+            ExpressionAttributeValues={':physical_activity': physical_activity},
+            ReturnValues='ALL_NEW'  # Return the updated item
+        )
+
+        # Get the updated item from the response
+        updated_item = response.get('Attributes', {})
+
+        # Return success response with the updated item
+        return jsonify({"success": True, "message": "Physical activity updated successfully", "updated_item": updated_item}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
+
+
 @app.route('/update_activity_intensity', methods=['POST'])
 def update_activity_intensity():
     try:
         # Parse the request data
         username = request.json.get('username')
         activity_intensity = request.json.get('activity_intensity')
-        # Check if the document exists
-        personal_metrics_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        personal_info_data = personal_metrics_ref.get().to_dict()
-        if personal_info_data:
-           personal_metrics_ref.update({'activity_intensity': activity_intensity})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document personal_info does not exist for user: " + username}), 404  
+
+        # Check if the user exists and get the current item
+        response = users_table.get_item(
+            Key={'username': username}
+        )
+        user_data = response.get('Item')
+
+        if not user_data:
+            return jsonify({"success": False, "message": f"User {username} does not exist"}), 404
+
+        # Update the 'activity_intensity' attribute in the 'users' table in DynamoDB
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression='SET personal_metrics.activity_intensity = :activity_intensity',
+            ExpressionAttributeValues={':activity_intensity': activity_intensity},
+            ReturnValues='ALL_NEW'  # Return the updated item
+        )
+
+        # Get the updated item from the response
+        updated_item = response.get('Attributes', {})
+
+        # Return success response with the updated item
+        return jsonify({"success": True, "message": "Activity intensity updated successfully", "updated_item": updated_item}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
+
 @app.route('/update_activity_duration', methods=['POST'])
 def update_activity_duration():
     try:
         # Parse the request data
         username = request.json.get('username')
         activity_duration = request.json.get('activity_duration')
-        # Check if the document exists
-        personal_metrics_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        personal_info_data = personal_metrics_ref.get().to_dict()
-        if personal_info_data:
-           personal_metrics_ref.update({'activity_duration': activity_duration})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document personal_info does not exist for user: " + username}), 404  
+
+        # Check if the user exists and get the current item
+        response = users_table.get_item(
+            Key={'username': username}
+        )
+        user_data = response.get('Item')
+
+        if not user_data:
+            return jsonify({"success": False, "message": f"User {username} does not exist"}), 404
+
+        # Update the 'activity_duration' attribute in the 'users' table in DynamoDB
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression='SET personal_metrics.activity_duration = :activity_duration',
+            ExpressionAttributeValues={':activity_duration': activity_duration},
+            ReturnValues='ALL_NEW'  # Return the updated item
+        )
+
+        # Get the updated item from the response
+        updated_item = response.get('Attributes', {})
+
+        # Return success response with the updated item
+        return jsonify({"success": True, "message": "Activity duration updated successfully", "updated_item": updated_item}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
+
+
 @app.route('/update_stress_level', methods=['POST'])
 def update_stress_level():
     try:
         # Parse the request data
         username = request.json.get('username')
         stress_level = request.json.get('stress_level')
-        # Check if the document exists
-        personal_metrics_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        personal_info_data = personal_metrics_ref.get().to_dict()
-        if personal_info_data:
-           personal_metrics_ref.update({'stress_level': stress_level})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document personal_info does not exist for user: " + username}), 404  
+
+        # Check if the user exists and get the current item
+        response = users_table.get_item(
+            Key={'username': username}
+        )
+        user_data = response.get('Item')
+
+        if not user_data:
+            return jsonify({"success": False, "message": f"User {username} does not exist"}), 404
+
+        # Update the 'stress_level' attribute in the 'users' table in DynamoDB
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression='SET personal_metrics.stress_level = :stress_level',
+            ExpressionAttributeValues={':stress_level': stress_level},
+            ReturnValues='ALL_NEW'  # Return the updated item
+        )
+
+        # Get the updated item from the response
+        updated_item = response.get('Attributes', {})
+
+        # Return success response with the updated item
+        return jsonify({"success": True, "message": "Stress level updated successfully", "updated_item": updated_item}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
+
 @app.route('/update_illness', methods=['POST'])
 def update_illness():
     try:
         # Parse the request data
         username = request.json.get('username')
         illness = request.json.get('illness')
-        # Check if the document exists
-        personal_metrics_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        personal_info_data = personal_metrics_ref.get().to_dict()
-        if personal_info_data:
-           personal_metrics_ref.update({'illness': illness})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document personal_info does not exist for user: " + username}), 404  
+
+        # Update the 'illness' attribute in the 'users' table in DynamoDB
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression='SET personal_metrics.illness = :illness',
+            ExpressionAttributeValues={':illness': illness},
+            ReturnValues='ALL_NEW'  # Return the updated item
+        )
+
+        # Get the updated item from the response
+        updated_item = response.get('Attributes', {})
+
+        # Return success response with the updated item
+        return jsonify({"success": True, "message": "Illness updated successfully", "updated_item": updated_item}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
 @app.route('/update_hormonal_changes', methods=['POST'])
 def update_hormonal_changes():
     try:
         # Parse the request data
         username = request.json.get('username')
         hormonal_changes = request.json.get('hormonal_changes')
-        # Check if the document exists
-        personal_metrics_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        personal_info_data = personal_metrics_ref.get().to_dict()
-        if personal_info_data:
-           personal_metrics_ref.update({'hormonal_changes': hormonal_changes})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document personal_info does not exist for user: " + username}), 404  
+
+        # Update the 'hormonal_changes' attribute in the 'users' table in DynamoDB
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression='SET personal_metrics.hormonal_changes = :hormonal_changes',
+            ExpressionAttributeValues={':hormonal_changes': hormonal_changes},
+            ReturnValues='ALL_NEW'  # Return the updated item
+        )
+
+        # Get the updated item from the response
+        updated_item = response.get('Attributes', {})
+
+        # Return success response with the updated item
+        return jsonify({"success": True, "message": "Hormonal changes updated successfully", "updated_item": updated_item}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
 @app.route('/update_alcohol_consumption', methods=['POST'])
 def update_alcohol_consumption():
     try:
         # Parse the request data
         username = request.json.get('username')
         alcohol_consumption = request.json.get('alcohol_consumption')
-        # Check if the document exists
-        personal_metrics_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        personal_info_data = personal_metrics_ref.get().to_dict()
-        if personal_info_data:
-           personal_metrics_ref.update({'alcohol_consumption': alcohol_consumption})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document personal_info does not exist for user: " + username}), 404  
+
+        # Update the 'alcohol_consumption' attribute in the 'users' table in DynamoDB
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression='SET personal_metrics.alcohol_consumption = :alcohol_consumption',
+            ExpressionAttributeValues={':alcohol_consumption': alcohol_consumption},
+            ReturnValues='ALL_NEW'  # Return the updated item
+        )
+
+        # Get the updated item from the response
+        updated_item = response.get('Attributes', {})
+
+        # Return success response with the updated item
+        return jsonify({"success": True, "message": "Alcohol consumption updated successfully", "updated_item": updated_item}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
+
 @app.route('/update_medication', methods=['POST'])
 def update_medication():
     try:
         # Parse the request data
         username = request.json.get('username')
         medication = request.json.get('medication')
-        # Check if the document exists
-        personal_metrics_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        personal_info_data = personal_metrics_ref.get().to_dict()
-        if personal_info_data:
-           personal_metrics_ref.update({'medication': medication})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document personal_info does not exist for user: " + username}), 404  
+
+        # Update the 'medication' attribute in the 'users' table in DynamoDB
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression='SET personal_metrics.medication = :medication',
+            ExpressionAttributeValues={':medication': medication},
+            ReturnValues='ALL_NEW'  # Return the updated item
+        )
+
+        # Get the updated item from the response
+        updated_item = response.get('Attributes', {})
+
+        # Return success response with the updated item
+        return jsonify({"success": True, "message": "Medication updated successfully", "updated_item": updated_item}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
 @app.route('/update_medication_dosage', methods=['POST'])
 def update_medication_dosage():
     try:
         # Parse the request data
         username = request.json.get('username')
         medication_dosage = request.json.get('medication_dosage')
-        # Check if the document exists
-        personal_metrics_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        personal_info_data = personal_metrics_ref.get().to_dict()
-        if personal_info_data:
-           personal_metrics_ref.update({'medication_dosage': medication_dosage})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document personal_info does not exist for user: " + username}), 404  
+
+        # Update the 'medication_dosage' attribute in the 'users' table in DynamoDB
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression='SET personal_metrics.medication_dosage = :medication_dosage',
+            ExpressionAttributeValues={':medication_dosage': medication_dosage},
+            ReturnValues='ALL_NEW'  # Return the updated item
+        )
+
+        # Get the updated item from the response
+        updated_item = response.get('Attributes', {})
+
+        # Return success response with the updated item
+        return jsonify({"success": True, "message": "Medication dosage updated successfully", "updated_item": updated_item}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
 @app.route('/update_weather_conditions', methods=['POST'])
 def update_weather_conditions():
     try:
         # Parse the request data
         username = request.json.get('username')
         weather_conditions = request.json.get('weather_conditions')
-        # Check if the document exists
-        personal_metrics_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        personal_info_data = personal_metrics_ref.get().to_dict()
-        if personal_info_data:
-           personal_metrics_ref.update({'weather_conditions': weather_conditions})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document personal_info does not exist for user: " + username}), 404  
+
+        # Update the 'weather_conditions' attribute in the 'users' table in DynamoDB
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression='SET personal_metrics.weather_conditions = :weather_conditions',
+            ExpressionAttributeValues={':weather_conditions': weather_conditions},
+            ReturnValues='ALL_NEW'  # Return the updated item
+        )
+
+        # Get the updated item from the response
+        updated_item = response.get('Attributes', {})
+
+        # Return success response with the updated item
+        return jsonify({"success": True, "message": "Weather conditions updated successfully", "updated_item": updated_item}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
-@app.route('/get_personal_metrics/<username>', methods=['GET'])
-def get_personal_metrics(username):
+
+
+@app.route('/get_personal_metrics', methods=['GET'])
+def get_personal_metrics():
     try:
-        # Reference to the Firestore document of the user
-        personal_metrics_ref = db.collection('users').document(username).collection('personal-metrics').document('personal-info')
-        # Get the user document data
-        personal_metrics_doc = personal_metrics_ref.get()
-        # Check if the document exists
-        if personal_metrics_doc.exists:
-            personal_data = personal_metrics_doc.to_dict()
+        # Extract username from query parameters
+        username = request.args.get('username')
+        
+        if not username:
+            return jsonify({"success": False, "message": "Username is required"}), 400
+
+        # Query DynamoDB for the user's personal metrics
+        response = users_table.get_item(
+            Key={
+                'username': username
+            }
+        )
+
+        # Check if the item exists in the response
+        if 'Item' in response:
+            personal_data = response['Item'].get('personal_metrics', {})
             return jsonify({"success": True, "data": personal_data}), 200  # Set success to True and include data
         else:
             return jsonify({"success": False, "message": "Personal metrics not found"}), 404
     except Exception as e:
-        # Handle exceptions
+        # Handle other exceptions
+        print(f"Exception: {e}")
         return jsonify({"success": False, "message": str(e)}), 500
+    
 
 @app.route('/update_name', methods=['POST'])
 def update_name():
@@ -975,66 +877,89 @@ def update_name():
         name = request.json.get('name')
         
         # Check if the document exists
-        users_ref = db.collection('users').document(username)
-        profile_data = users_ref.get().to_dict()
+        response = users_table.get_item(
+            Key={
+                'username': username
+            }
+        )
         
-        if profile_data:
-           users_ref.update({'fullName': name})
-           # Return success response
-           return jsonify({"success": True}), 200
-
+        if 'Item' in response:
+            # Update the name in the DynamoDB item
+            users_table.update_item(
+                Key={
+                    'username': username
+                },
+                UpdateExpression='SET #nameAttr = :nameValue',
+                ExpressionAttributeNames={
+                    '#nameAttr': 'name'
+                },
+                ExpressionAttributeValues={
+                    ':nameValue': name
+                }
+            )
+            
+            # Return success response
+            return jsonify({"success": True}), 200
         else:
             # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document does not exist for user: " + username}), 404
+            return jsonify({"success": False, "message": "Username does not exist: " + username}), 404
         
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
+
+
 @app.route('/update_email', methods=['POST'])
 def update_email():
     try:
         # Parse the request data
         username = request.json.get('username')
         email = request.json.get('email')
-        
-        # Check if the document exists
-        users_ref = db.collection('users').document(username)
-        profile_data = users_ref.get().to_dict()
-        
-        if profile_data:
-           users_ref.update({'email': email})
-           # Return success response
-           return jsonify({"success": True}), 200
 
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document does not exist for user: " + username}), 404
-        
+        # Update the item in the DynamoDB table
+        response = users_table.update_item(
+            Key={
+                'username': username
+            },
+            UpdateExpression='SET email = :email',
+            ExpressionAttributeValues={
+                ':email': email
+            },
+            ReturnValues='UPDATED_NEW'
+        )
+
+        # Return success response
+        return jsonify({"success": True}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
+
+
 @app.route('/update_phone_number', methods=['POST'])
 def update_phone_number():
     try:
         # Parse the request data
         username = request.json.get('username')
         phoneNumber = request.json.get('phoneNumber')
-        
-        # Check if the document exists
-        users_ref = db.collection('users').document(username)
-        profile_data = users_ref.get().to_dict()
-        
-        if profile_data:
-           users_ref.update({'phoneNumber': phoneNumber})
-           # Return success response
-           return jsonify({"success": True}), 200
 
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document does not exist for user: " + username}), 404
-        
+        # Update the item in the DynamoDB table
+        response = users_table.update_item(
+            Key={
+                'username': username
+            },
+            UpdateExpression='SET phoneNumber = :val1',
+            ExpressionAttributeValues={
+                ':val1': phoneNumber
+            },
+            ReturnValues='UPDATED_NEW'
+        )
+
+        # Return success response
+        return jsonify({"success": True}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
@@ -1045,24 +970,27 @@ def update_date_of_birth():
         # Parse the request data
         username = request.json.get('username')
         dateOfBirth = request.json.get('dateOfBirth')
-        
-        # Check if the document exists
-        users_ref = db.collection('users').document(username)
-        profile_data = users_ref.get().to_dict()
-        
-        if profile_data:
-           users_ref.update({'dateOfBirth': dateOfBirth})
-           # Return success response
-           return jsonify({"success": True}), 200
 
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document does not exist for user: " + username}), 404
-        
+        # Update the item in the DynamoDB table
+        response = users_table.update_item(
+            Key={
+                'username': username
+            },
+            UpdateExpression='SET dateOfBirth = :val1',
+            ExpressionAttributeValues={
+                ':val1': dateOfBirth
+            },
+            ReturnValues='UPDATED_NEW'
+        )
+
+        # Return success response
+        return jsonify({"success": True}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
+
 @app.route('/update_emergency_contact', methods=['POST'])
 def update_emergency_contact():
     try:
@@ -1071,13 +999,15 @@ def update_emergency_contact():
         emergencyContact = request.json.get('emergencyContact')
         
         # Check if the document exists
-        users_ref = db.collection('users').document(username)
-        profile_data = users_ref.get().to_dict()
-        
-        if profile_data:
-           users_ref.update({'emergencyContact': emergencyContact})
-           # Return success response
-           return jsonify({"success": True}), 200
+        response = users_table.get_item(Key={'username': username})
+        if 'Item' in response:
+            users_table.update_item(
+                Key={'username': username},
+                UpdateExpression='SET emergencyContact = :val',
+                ExpressionAttributeValues={':val': emergencyContact}
+            )
+            # Return success response
+            return jsonify({"success": True}), 200
 
         else:
             # Document doesn't exist, return error response
@@ -1086,19 +1016,16 @@ def update_emergency_contact():
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
+
+
 @app.route('/get_profile_data/<username>', methods=['GET'])
 def get_profile_data(username):
     try:
-        # Reference to the Firestore document of the user
-        user_ref = db.collection('users').document(username)
-
-        # Get the user document data
-        user_doc = user_ref.get()
-
         # Check if the document exists
-        if user_doc.exists:
-            user_data = user_doc.to_dict()
+        response = users_table.get_item(Key={'username': username})
+        if 'Item' in response:
+            user_data = response['Item']
             return jsonify({"success": True, "data": user_data}), 200  # Set success to True and include data
         else:
             return jsonify({"success": False, "message": "User not found"}), 404
@@ -1107,37 +1034,37 @@ def get_profile_data(username):
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
     
+
 @app.route('/update_view_activity', methods=['POST'])
 def update_view_activity():
     try:
         # Parse the request data
         username = request.json.get('username')
         value = request.json.get('value')
-        # Check if the document exists
-        users_ref = db.collection('users').document(username)
-        profile_data = users_ref.get().to_dict()
-        if profile_data:
-           users_ref.update({'view_activity': value})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document does not exist for user: " + username}), 404
+
+        # Update the 'view_activity' attribute in the 'users' table
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression='SET view_activity = :val',
+            ExpressionAttributeValues={':val': value}
+        )
+
+        # Return success response
+        return jsonify({"success": True}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
+
 @app.route('/get_view_activity/<username>', methods=['GET'])
 def get_view_activity(username):
     try:
-        # Reference to the Firestore document of the user
-        user_ref = db.collection('users').document(username)
-        # Get the user document data
-        user_doc = user_ref.get()
-        # Check if the document exists
-        if user_doc.exists:
-            user_data = user_doc.to_dict()
-            return jsonify({"success": True, "view_activity": user_data['view_activity']}), 200  # Set success to True and include data
+        # Get the 'view_activity' attribute from the 'users' table
+        response = users_table.get_item(Key={'username': username})
+        item = response.get('Item')
+        if item:
+            return jsonify({"success": True, "view_activity": item.get('view_activity')}), 200  # Set success to True and include data
         else:
             return jsonify({"success": False, "message": "User not found"}), 404
     except Exception as e:
@@ -1150,110 +1077,36 @@ def update_view_meals():
         # Parse the request data
         username = request.json.get('username')
         value = request.json.get('value')
-        # Check if the document exists
-        users_ref = db.collection('users').document(username)
-        profile_data = users_ref.get().to_dict()
-        if profile_data:
-           users_ref.update({'view_meals': value})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document does not exist for user: " + username}), 404
+        
+        # Update the 'view_meals' attribute in the 'users' table
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression='SET view_meals = :val',
+            ExpressionAttributeValues={':val': value}
+        )
+
+        # Return success response
+        return jsonify({"success": True}), 200
+
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
+
 @app.route('/get_view_meals/<username>', methods=['GET'])
 def get_view_meals(username):
     try:
-        # Reference to the Firestore document of the user
-        user_ref = db.collection('users').document(username)
-        # Get the user document data
-        user_doc = user_ref.get()
-        # Check if the document exists
-        if user_doc.exists:
-            user_data = user_doc.to_dict()
-            return jsonify({"success": True, "view_meals": user_data['view_meals']}), 200  # Set success to True and include data
+        # Get the 'view_meals' attribute from the 'users' table
+        response = users_table.get_item(Key={'username': username})
+        item = response.get('Item')
+        if item:
+            return jsonify({"success": True, "view_meals": item.get('view_meals')}), 200  # Set success to True and include data
         else:
             return jsonify({"success": False, "message": "User not found"}), 404
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
-    
-@app.route('/update_view_feedback', methods=['POST'])
-def update_view_feedback():
-    try:
-        # Parse the request data
-        username = request.json.get('username')
-        value = request.json.get('value')
-        # Check if the document exists
-        users_ref = db.collection('users').document(username)
-        profile_data = users_ref.get().to_dict()
-        if profile_data:
-           users_ref.update({'view_feedback': value})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document does not exist for user: " + username}), 404
-    except Exception as e:
-        # Handle exceptions
-        return jsonify({"success": False, "message": str(e)}), 500
-    
-@app.route('/get_view_feedback/<username>', methods=['GET'])
-def get_view_feedback(username):
-    try:
-        # Reference to the Firestore document of the user
-        user_ref = db.collection('users').document(username)
-        # Get the user document data
-        user_doc = user_ref.get()
-        # Check if the document exists
-        if user_doc.exists:
-            user_data = user_doc.to_dict()
-            return jsonify({"success": True, "view_feedback": user_data['view_feedback']}), 200  # Set success to True and include data
-        else:
-            return jsonify({"success": False, "message": "User not found"}), 404
-    except Exception as e:
-        # Handle exceptions
-        return jsonify({"success": False, "message": str(e)}), 500
-    
-@app.route('/update_notifications', methods=['POST'])
-def update_notifications():
-    try:
-        # Parse the request data
-        username = request.json.get('username')
-        value = request.json.get('value')
-        # Check if the document exists
-        users_ref = db.collection('users').document(username)
-        profile_data = users_ref.get().to_dict()
-        if profile_data:
-           users_ref.update({'notifications': value})
-           # Return success response
-           return jsonify({"success": True}), 200
-        else:
-            # Document doesn't exist, return error response
-            return jsonify({"success": False, "message": "Document does not exist for user: " + username}), 404
-    except Exception as e:
-        # Handle exceptions
-        return jsonify({"success": False, "message": str(e)}), 500
-    
-@app.route('/get_notifications/<username>', methods=['GET'])
-def get_notifications(username):
-    try:
-        # Reference to the Firestore document of the user
-        user_ref = db.collection('users').document(username)
-        # Get the user document data
-        user_doc = user_ref.get()
-        # Check if the document exists
-        if user_doc.exists:
-            user_data = user_doc.to_dict()
-            return jsonify({"success": True, "notifications": user_data['notifications']}), 200  # Set success to True and include data
-        else:
-            return jsonify({"success": False, "message": "User not found"}), 404
-    except Exception as e:
-        # Handle exceptions
-        return jsonify({"success": False, "message": str(e)}), 500
+
 
 @app.route('/plot-prediction', methods=['POST'])
 def plot_prediction_endpoint():
@@ -1267,7 +1120,7 @@ def plot_prediction_endpoint():
     training_data = pd.read_csv('544-ws-training.csv')  # Adjust path as necessary
     
     # Here, you would call your adapted plotting function with the loaded data
-    image_url = plot_prediction_with_training_and_predicted_data(
+    image = plot_prediction_with_training_and_predicted_data(
         training_data,
         input_data_df,
         hyperglycemia_threshold,
@@ -1275,10 +1128,7 @@ def plot_prediction_endpoint():
     )
 
     # Return the URL to the saved image
-    return jsonify({'image_url': image_url})
-
-"""Helper Methods"""
-
+    return jsonify({'image': image})
 
 def plot_prediction_with_training_and_predicted_data(training_data, input_data, hyperglecemia_threshold, hypoglycemia_threshold):
     plt.figure(figsize=(12, 7), facecolor='#1b2130')
@@ -1359,180 +1209,18 @@ def plot_prediction_with_training_and_predicted_data(training_data, input_data, 
     plt.grid(color='gray', linestyle='--', linewidth=0.5)
     plt.tight_layout()
     
-    # Define the image save path
-    image_save_path = 'glucose_plot.png'
-    plt.savefig(image_save_path)
+    # Save the plot to a bytes buffer
+    buffer = io.BytesIO()
+    plt.savefig(buffer, format='png')
+    buffer.seek(0)
+
+    # Encode the image as a base64 string
+    image_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+
     plt.close()
 
-    # Construct the URL to access the saved image
-    # Adjust the URL based on your actual server setup and image serving mechanism
-    image_url = f'https://i-sole-backend.com/{image_save_path}'
+    return image_base64
 
-    return image_url
-
-def add_doctor(username, doctorName):
-    # Reference to the Firestore document of the user
-    user_ref = db.collection('users').document(username)
-
-    # Update the user document to add the 'myDoctor' field
-    user_ref.update({'myDoctor': doctorName})
-
-def initialize_user_thread_counter(username): # need to call at creation of each account
-    # Reference to the user's thread counter document
-    counter_ref = db.collection('users').document(username).collection('feedback').document('thread_counter')
-    
-    # Set the initial value of the counter
-    counter_ref.set({'last_thread_number': 0})
-
-
-def generate_unique_patient_id():
-    # Repeat until a unique ID is found
-    while True:
-        # Generate a random number for patientID
-        patient_id = str(random.randint(10000, 99999))  # Adjust range as needed
-
-        # Check if this patientID is already in use
-        if not check_patient_id_exists(patient_id):
-            return patient_id
-
-def check_patient_id_exists(patient_id):
-    # Query Firestore to check if the patientID already exists
-    users_ref = db.collection('users')
-    query = users_ref.where('patientID', '==', patient_id).limit(1).stream()
-    return any(query)
-
-def update_id_map(patient_id, username):
-    """
-    Update the idmap document in the system_data collection with the patient ID and username.
-    """
-    idmap_ref = db.collection('system_data').document('idmap')
-    # Use a transaction to ensure atomicity
-    @firestore.transactional
-    def update_in_transaction(transaction, ref, pid, uname):
-        snapshot = ref.get(transaction=transaction)
-        if snapshot.exists:
-            current_map = snapshot.to_dict()
-            current_map[pid] = uname
-        else:
-            current_map = {pid: uname}
-        transaction.set(ref, current_map)
-    
-    transaction = db.transaction()
-    update_in_transaction(transaction, idmap_ref, patient_id, username)
-
-
-def get_username_from_patient_id(patient_id):
-    # Assuming you have a 'system_data' collection and an 'idmap' document
-    idmap_ref = db.collection('system_data').document('idmap')
-    idmap_doc = idmap_ref.get()
-    if idmap_doc.exists:
-        idmap = idmap_doc.to_dict()
-        return idmap.get(patient_id)
-    return None
-
-
-@firestore.transactional
-def increment_counter(transaction, counter_ref):
-    snapshot = counter_ref.get(transaction=transaction)
-    last_number = snapshot.get('last_thread_number')
-
-    if last_number is None:
-        last_number = 0
-        transaction.set(counter_ref, {'last_thread_number': last_number})
-
-    new_number = last_number + 1
-    transaction.update(counter_ref, {'last_thread_number': new_number})
-    return new_number
-
-def start_new_thread_with_message(username, message, sender):
-    counter_ref = db.collection('users').document(username).collection('feedback').document('thread_counter')
-    new_thread_number = increment_counter(db.transaction(), counter_ref)
-
-    new_thread = "thread" + str(new_thread_number)
-    now = datetime.now()
-    date_str = now.strftime("%d %B %Y")
-    time_str = now.strftime("%I:%M %p")
-
-    message_data = {
-        'message': message,
-        'date': date_str,
-        'time': time_str,
-        'sender': sender
-    }
-
-    doc_ref = db.collection('users').document(username).collection('feedback').document(new_thread)
-    doc_ref.set({'messages': [message_data]})
-
-
-def add_message_to_conversation(username, index, message, sender):
-    desired_thread = "thread" + str(index)
-    # Get the current datetime
-    now = datetime.now()
-    # Format date and time (12-hour clock with AM/PM)
-    date_str = now.strftime("%d %B %Y")
-    time_str = now.strftime("%I:%M %p")  # Format for 12-hour clock with AM/PM
-
-    # Prepare the message data with separate date and time
-    message_data = {
-        'message': message,
-        'date': date_str,
-        'time': time_str,
-        'sender': sender
-    }
-
-    # Get a reference to the document
-    doc_ref = db.collection('users').document(username).collection('feedback').document(desired_thread)
-
-    # Use set with merge=True to update if exists or create if not exists
-    doc_ref.set({'messages': firestore.ArrayUnion([message_data])}, merge=True)
-
-def get_all_conversations(username):
-    # Array to hold the first message and count of each thread
-    first_messages = []
-
-    # Reference to the user's feedback collection
-    feedback_ref = db.collection('users').document(username).collection('feedback')
-
-    # Get all documents (threads) in the feedback collection
-    threads = feedback_ref.stream()
-
-    for thread in threads:
-        # Get the thread data
-        thread_data = thread.to_dict()
-
-        # Check if 'messages' field exists and has at least one message
-        if 'messages' in thread_data and thread_data['messages']:
-            # Get the count of messages in the thread
-            message_count = len(thread_data['messages'])
-
-            # Create a new dict with the 0th message and the count
-            first_message_with_count = {
-                **thread_data['messages'][0],
-                'count': message_count
-            }
-
-            # Append this new dict to the array
-            first_messages.append(first_message_with_count)
-
-    return first_messages
-
-def get_one_conversation(username, index):
-    # Construct the thread ID from the index
-    desired_thread = "thread" + str(index)
-
-    # Reference to the specific document (thread) in the user's feedback collection
-    thread_ref = db.collection('users').document(username).collection('feedback').document(desired_thread)
-
-    # Attempt to get the document
-    thread_doc = thread_ref.get()
-
-    # Check if the document exists and return the 'messages' array if it does
-    if thread_doc.exists:
-        thread_data = thread_doc.to_dict()
-        return thread_data.get('messages', [])  # Return the messages array or an empty array if not found
-
-    # Return None or an empty array if the document does not exist
-    return None
 
 def predict_single_entry(input_data):
     # Load the trained model and scaler objects
@@ -1563,5 +1251,234 @@ def predict_single_entry(input_data):
     
     return scaled_prediction.flatten()[0]  # Return a single predicted value
 
+
+def calculate_blood_glucose(sweat_glucose_umolL):
+    BG_high = 300  # mg/dL
+    BG_low = 50    # mg/dL
+    SG_high_mgDL = 36   # mg/dL
+    SG_low_mgDL = 10.8  # mg/dL
+
+    # Calculate K
+    K = (BG_high - BG_low) / (SG_high_mgDL - SG_low_mgDL)
+
+    # Calculate Io
+    Io = BG_low - K * SG_low_mgDL
+
+    """
+    Convert sweat glucose signal from µmol/L to estimated blood glucose level in mg/dL.
+    """
+    # Convert sweat glucose from µmol/L to mg/dL
+    sweat_glucose_mgDL = sweat_glucose_umolL * 0.18
+
+    # Calculate estimated blood glucose
+    BG = K * sweat_glucose_mgDL + Io
+    return BG
+
+@app.route('/get_latest_glucose/<username>', methods=['GET', 'POST'])
+def get_latest_glucose(username):
+    try:
+        # Query DynamoDB table for the most recent glucose entry for the user
+        response = device_data_table.query(
+            KeyConditionExpression=Key('username').eq(username),
+            ScanIndexForward=False,  # Sort by timestamp in descending order
+            Limit=1  # Get only the latest entry
+        )
+        # print(response)
+
+        if response['Items']:
+            latest_glucose_item = response['Items'][0]
+            sweat_glucose = round(float(latest_glucose_item['glucose_value']), 2)
+            blood_glucose = round(calculate_blood_glucose(sweat_glucose), 2)
+            latestGlucoseValue = {
+                "sweatGlucose": sweat_glucose,
+                "bloodGlucose": blood_glucose
+            }
+
+            return jsonify({"success": True, "latestGlucoseValue": latestGlucoseValue}), 200
+        else:
+            return jsonify({"success": False, "message": "No glucose data found for user: " + username}), 404
+
+    except Exception as e:
+        # Handle exceptions
+        return jsonify({"success": False, "message": str(e)}), 500
+
+@app.route('/testapi', methods=['GET'])
+def testapi():
+    return 'Hello there! from I-Sole Backend'
+
+
+@app.route('/get_average_pressure/<username>', methods=['GET'])
+def get_average_pressure(username):
+    try:
+        # Get start and end timestamps from query parameters
+        start_timestamp_str = request.args.get('start').rstrip('Z')  # Remove 'Z' suffix
+        end_timestamp_str = request.args.get('end').rstrip('Z')  # Remove 'Z' suffix
+        # Get the region from query parameters
+        foot_region = request.args.get('footRegion')
+        # print(username,start_timestamp_str,end_timestamp_str)
+
+        # Query DynamoDB table for pressure data within the specified time range
+        response = device_data_table.query(
+            KeyConditionExpression=Key('username').eq(username) & Key('timestamp').between(start_timestamp_str, end_timestamp_str)
+        )
+
+        pressure_data = response['Items']
+
+        p_values = []
+        for item in pressure_data:
+            if foot_region in item['p_value']:
+                p_values.append(item['p_value'][foot_region])
+
+        if len(p_values) == 0:
+            average_pressure = 0
+            diabetic_ulceration_risk = 'Unknown'
+        else:
+            # Calculate the average of p_values and round it to 2 decimal places
+            average_pressure = round(statistics.mean(p_values), 2)
+            diabetic_ulceration_risk = 'Low' if average_pressure <= 200 else 'High'
+
+        return jsonify({"success": True, "averagePressure": average_pressure, "diabeticUlcerationRisk": diabetic_ulceration_risk}), 200
+
+    except Exception as e:
+        # Handle exceptions
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route('/start_data_faker', methods=['POST'])
+def start_data_faker():
+    try:
+        username = request.json.get('username')
+        if not username:
+            return jsonify({"success": False, "message": "Username is required"}), 400
+
+        # Function to stop the thread after a given time
+        def stop_task(thread):
+            thread.do_run = False
+
+        # Create and start the thread
+        task_thread = threading.Thread(target=add_pressure_data, args=(username,))
+        task_thread.do_run = True  # Initialize the thread's do_run attribute
+        task_thread.start()
+
+        # Run the task for 3 seconds
+        timer = threading.Timer(30, stop_task, args=[task_thread])
+        timer.start()
+
+        # Wait for the thread to stop
+        while task_thread.is_alive():
+            time.sleep(0.1)
+
+        # Ensure the thread is properly stopped
+        task_thread.join()
+
+        return jsonify({"success": True, "message": "Data insertion has been stopped."})
+
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+
+
+@app.route('/plot_pressure', methods=['GET'])
+def serve_plot():
+    username = request.args.get('username')
+    start_timestamp = request.args.get('start_timestamp')
+    end_timestamp = request.args.get('end_timestamp')
+    region = request.args.get('region')
+
+    # Directly fetch the pressure data using the internal function
+    pressure_data = fetch_pressure_data_internal(username, start_timestamp, end_timestamp, region)
+
+    # If there are more than 50 values, keep only the last 50
+    if len(pressure_data) > 50:
+        pressure_data = pressure_data[-50:]
+
+    # print("region values 50: ", pressure_data)
+
+    # Convert all values to floats
+    region_values_float = [float(value) for value in pressure_data]
+
+    if isinstance(region_values_float, list):
+        # Plot the pressure data and get the image buffer
+        image_buffer = plot_pressuree(region_values_float)
+        return send_file(image_buffer, mimetype='image/png')
+    else:
+        return jsonify({"success": False, "message": "Failed to fetch pressure data"}), 500
+
+
+def fetch_pressure_data_internal(username, start_timestamp_str, end_timestamp_str, region):
+    try:
+        start_timestamp_str = start_timestamp_str.rstrip('Z')  # Remove 'Z' suffix
+        end_timestamp_str = end_timestamp_str.rstrip('Z')  # Remove 'Z' suffix
+
+        # print("here you goo \n\n\n",start_timestamp_iso, end_timestamp_iso, start_timestamp_str,end_timestamp_str)
+
+        # Query DynamoDB table for pressure data within the specified time range
+        response = device_data_table.query(
+            KeyConditionExpression=Key('username').eq(username) & Key('timestamp').between(start_timestamp_str, end_timestamp_str),
+            Limit=50
+        )
+
+        pressure_data = response['Items']
+
+        p_values = []
+        for item in pressure_data:
+            if region in item['p_value']:
+                p_values.append(item['p_value'][region])
+        return p_values  # Return the data directly
+
+    except Exception as e:
+        print(f"Error fetching pressure data: {e}")
+        return []  # Return an empty list or handle the error as needed
+
+
+def plot_pressuree(training_data):
+    plt.figure(figsize=(12, 7), facecolor='#1b2130')
+    ax = plt.axes()
+    ax.set_facecolor('#1b2130')
+
+
+    timestamps = [x * 5 for x in range(50)]
+    data_to_plot = training_data + [None] * (50 - len(training_data))
+
+    if data_to_plot:
+        plt.plot(timestamps, data_to_plot, label='Insole Recorded Data', color='#007bff', marker='o', markersize=12, linewidth=3, markeredgewidth=2, markeredgecolor='white')
+        valid_indices = [i for i, v in enumerate(data_to_plot) if v is not None]
+        if valid_indices:
+            plt.fill_between(timestamps[:valid_indices[-1]+1], data_to_plot[:valid_indices[-1]+1], color='#007bff', alpha=0.075)
+
+    plt.xticks(timestamps, [str(ts) for ts in timestamps], rotation=45, color='white', fontsize=12)
+    plt.yticks(color='white', fontsize=12)
+
+    if training_data:
+        y_min, y_max = min(training_data), max(training_data)
+        y_range = y_max - y_min
+        plt.ylim(y_min - 0.05 * y_range, y_max + 0.3 * y_range)
+
+    plt.xlabel('Time (seconds)', color='white', fontsize=16, labelpad=20, fontweight='600')
+    plt.ylabel('Pressure Value (kPa)', color='white', fontsize=16, labelpad=20, fontweight='600')
+    # Create the legend
+    legend = plt.legend(facecolor='#1b2130', edgecolor='white', fontsize=16, loc='upper left')
+
+    # Set the color of all the legend text to white
+    for text in legend.get_texts():
+        text.set_color('white')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.spines['bottom'].set_color('white')
+    plt.grid(color='gray', linestyle='--', linewidth=0.5)
+    plt.tight_layout()
+    
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', facecolor=ax.get_facecolor())
+    plt.close()
+    buf.seek(0)
+    return buf
+
+
+
+
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0',port='5000',debug=True)
