@@ -1,0 +1,30 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [ zeeshanMain ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.5.3
+      with:
+        ssh-private-key: ${{ secrets.EC2_KEY }}
+
+    - name: Deploy on EC2
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.I_SOLE_EC2_USERNAME }}@${{ secrets.I_SOLE_EC2_HOSTNAME }} << 'EOF'
+            cd /home/${{ secrets.I_SOLE_EC2_USERNAME }}/I-Sole-backend
+            git pull
+            # source ./i-sole-env/bin/activate 
+            # For a Python app
+            sudo systemctl restart myapp.service
+            # For a web server
+            sudo systemctl restart caddy
+        EOF

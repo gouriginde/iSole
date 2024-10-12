@@ -1,0 +1,137 @@
+
+:root{
+    --clr-primary: #051622;
+    --clr-primary-lite: #145888;
+
+}
+
+.homepage{
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+}
+
+.homepage-navbar{
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-height: 150px;
+    position: fixed;
+    top: 0px;
+    background: linear-gradient(to right, var(--clr-primary), var(--clr-primary-lite));
+    z-index: 2;
+}
+
+.homepage-navbar img{
+    max-height: 140px;
+    width: auto;
+    padding: 5px;
+}
+
+
+
+.homepage-navbar button{
+    background: transparent;
+    color: white; 
+    font-size: 2em;
+    font-weight: bold;
+    margin: 20px;
+    cursor: pointer;
+    transition: color 0.3s, border-color 0.3s;
+}
+
+.homepage-navbar button:hover {
+    color: #000; 
+    opacity: 1;
+}
+
+.homepage-section {
+    min-height: 100vh;
+    width: 100%;
+    padding-top: 150px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    background-attachment: fixed;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+}
+
+.homepage-section:not(.no-overlay)::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(to right, rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.3));
+}
+
+.homepage-section > * {
+    position: relative;
+}
+
+
+.section1 {
+    background-image: url('../images/homepage-background1.png'); /* Replace with your image path */
+    justify-content: flex-start;
+    align-items: flex-end;
+    padding: 300px;
+}
+
+.section2 {
+    justify-content: space-evenly;
+}
+
+
+
+.section3 {
+    background-image: url('../images/homepage-background2.png'); /* Replace with your image path */
+    padding: 300px;
+}
+
+
+.main--heading {
+    font-size: 5em;
+    color: white;
+}
+
+.secondary--heading--dark{
+    font-size: 3em;
+    color: black;
+}
+
+.homepage-showcase-image{
+    max-width: 500px;
+}
+
+.homepage-textblock{
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 200px;
+    justify-content: space-evenly;
+}
+
+.responsive-iframe-container {
+    position: relative;
+    width: 100%;
+    padding-bottom: 56.25%; /* 16:9 aspect ratio */
+    overflow: hidden;
+}
+  
+.responsive-iframe-container iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 15px;
+}

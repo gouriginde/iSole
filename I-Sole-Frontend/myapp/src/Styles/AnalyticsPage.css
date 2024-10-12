@@ -1,0 +1,453 @@
+/* Make sure the main container allows for wrapping */
+.analytics-content {
+    display: flex;
+    flex-direction: column;
+    text-align: center;
+    flex: 1;
+    background: #051622; /* Dark background */
+    padding: 20px;
+    color: #DEB992; /* Light text for better contrast */
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-weight: 500;
+    overflow: auto;
+    gap: 20px;
+    max-width: 1200px;
+}
+/* 
+.sidebar {
+  display: none;
+} */
+
+ /* Flex container for the top row cards */
+.top-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  flex-wrap: wrap; /* Allows items to wrap to the next line */
+  gap: 20px; /* Space between cards */
+  flex: 1;
+  align-items: center;
+}
+
+/* Cards within the top row */
+.top-row .card {
+  flex: 1; /* Allow the cards to grow and shrink with the container */
+  min-width: 100px;
+  min-height: 150px;
+}
+  
+
+/* Main content area with charts and predictions */
+.main-content {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  flex-grow: 1; /* Allow this row to take up all remaining space */
+  gap: 20px; /* Space between the charts column and the side column */
+}
+
+
+  /* Column for the current glucose level and predictions */
+  .side-column {
+    display: flex;
+    flex: 3;
+    flex-direction: column;
+    gap: 20px;
+    height: 100%; /* Make the column fill the height */
+  }
+
+
+.chart {
+  background-color: #022b3a;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between; /* Centers content vertically */
+  align-items: center; /* Centers content horizontally */
+}
+
+.pressure-sensor-analytics{
+  min-width: 500px;
+  max-height: 700px;
+}  
+
+  
+  /* Style for charts */
+  .chart {
+    flex: 1 1 calc(50% - 10px); /* Takes half of the space, minus the gap */
+    padding: 20px;
+    background-color: #1B2130;
+    border-radius: 10px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.65);
+    position: relative; 
+  }
+  
+  .card {
+    flex: 1; /* Distribute available space equally */
+    display: flex;
+    flex-direction: column; /* Stack children vertically */
+    justify-content: center; /* Center content vertically for the donut chart */
+    padding: 20px;
+    border-radius: 10px;
+    background-color: #1B2130;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.65);
+  }
+
+  .donut-chart-dummy {
+    width: 100%; /* Ensures the container takes the full width of the card */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  .donut-chart-dummy img {
+    max-width: 100%; /* Ensures the image does not exceed the container width */
+    height: auto; /* Maintains the aspect ratio of the image */
+  }
+
+  .top-row .card p {
+    margin: 0;
+    margin-bottom: 5px; /* Space below the paragraph */
+    color: gray; /* Example color, adjust as needed */
+    font-size: 1.1em; /* Adjust size as needed */
+    font-weight: 600;
+  }
+
+  .card span {
+    display: flex;
+    align-items: center;
+    justify-content: center; /* Center the text and arrow horizontally */
+    font-size: 0.9em;
+    margin: 0;
+  }
+
+  .card span::before {
+    content: '';
+    display: inline-block;
+    width: 0;
+    height: 0;
+    margin-right: 4px; /* Space between arrow and text */
+  }
+
+  .card span.positive {
+    color: #4CAF50;
+  }
+
+  .card span.negative {
+    color: #F44336;
+  }
+  
+  .card span.positive::before {
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 10px solid #4CAF50; /* Green arrow pointing up */
+  }
+  
+  .card span.negative::before {
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 10px solid #F44336; /* Red arrow pointing down */
+  }
+  
+  .card p, .card h1, .card span {
+    margin: 0;
+    margin-bottom: 8px; /* Add space below each element */
+  }
+  
+  
+  
+  .side-column .card {
+    position: relative;
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center; /* Vertically centers items within the container */
+    justify-content: center; /* Horizontally centers items within the container */
+  }
+  
+
+  .chart h1 {
+    
+    top: 2rem; /* Position from the top of the container */
+    left: 20px; /* Position from the left of the container */
+    margin-bottom: 5px; /* Space below the heading */
+    color: #DEB992; /* Adjust the color if needed */
+  }
+
+  .icon {
+    height: 30px; /* Adjust as needed */
+    width: 30px; /* Adjust as needed */
+    margin-right: 5px; /* To give some space between the icon and the text */
+  }
+  
+
+  .charts-column .toggle-switch {
+
+    top: 1.5rem;  /* Align to the top of the container */
+    right: 20px; /* Align to the right of the container */
+  }
+
+  .side-column .card h1 {
+    position: absolute;
+    top: 2rem; /* Adjust the top position as needed */
+    left: 50%; /* Center the element by setting left to 50% of the parent's width */
+    transform: translateX(-50%); /* Shift the element to the left by half its width */
+    width: 90%; /* Set the width to 100% of the parent container */
+    margin: 0;
+    color: #DEB992;
+    text-align: center; /* This will ensure the text itself is centered */
+  }  
+
+.card_prediction_group{
+  display: flex;
+  flex-direction: row;
+  gap: 20px;
+  height: auto;
+  flex-wrap: wrap;
+}
+  
+.predictions-list {
+    width: 100%;
+    list-style-type: none;
+    padding-left: 0;
+    flex-grow: 1;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 20px;
+}
+
+.predictions-list li {
+  padding: 15px 20px;
+  max-width: 400px;
+  min-width: 300px;
+  border-radius: 10px;
+  color: #DEB992;
+  border: 1px solid rgba(255, 255, 255, 0.1); /* Subtle light border */
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25), 0 6px 12px rgba(0, 0, 0, 0.35); /* Refined box-shadow */
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  font-weight: bold;
+  font-size: 1.1em; /* Increased font size for better readability */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.predictions-list li:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.3), 0 10px 20px rgba(0, 0, 0, 0.45); /* Enhanced shadow on hover for more depth */
+}
+
+
+.predictions-list li strong {
+  display: block;
+  font-weight: bold;
+  margin-top: 5px;
+}
+
+.high-risk {
+  color: #D32F2F; /* red color for high risk */
+}
+
+.low-risk {
+  color: #388E3C; /* green color for low risk */
+}
+
+.card.predictions {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.5);
+    color: #DEB992;
+    
+}
+
+.card.predictions h1 {
+    color: #DEB992;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+  
+  .bar-chart {
+    display: flex;
+    justify-content: space-around;
+    align-items: flex-end;
+    height: 150px; /* Set a fixed height for your bar chart */
+    background-color: #0c2d3d; /* Chart background */
+    border-radius: 8px; /* Optional: if you want rounded corners */
+    padding: 10px;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5);
+    margin-top: 20px; /* Space from the title */
+  }
+  
+  .bar {
+    width: 20px; /* Width of individual bars */
+    background-color: #00a699; /* Bar color */
+    margin: 0 5px; /* Space between bars */
+    border-radius: 4px; /* Rounded corners for bars */
+    transition: height 0.3s ease; /* Smooth transition for hover effects */
+  }
+  
+  .bar:hover {
+    background-color: #017970; /* Darken bar color on hover */
+    height: 100%; /* Full height on hover */
+  }
+  
+  .current-glucose-level .toggle-switch
+  { 
+    position: absolute; /* Absolute position within the .chart container */
+    bottom: 1.5rem;  /* Align to the top of the container */
+    display: flex;
+  }
+
+  .chart-header {
+    width: 100%;
+    display: flex;
+    justify-content: center; /* This separates the h1 and ToggleSwitch */
+    align-items: center; /* This vertically centers them if they are of different heights */
+    min-width: 0; /* Allows children to shrink if necessary */
+    flex-wrap: wrap;
+    padding-bottom: 20px;
+    gap: 50px;
+  }
+
+  .chart-header h1 {
+    flex-shrink: 1; /* Allows the h1 to shrink if necessary */
+    margin-right: 10px; /* Minimum gap between h1 and ToggleSwitch */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis; /* Ensures the text is truncated with an ellipsis if it overflows */
+    align-self: center;
+    
+  }
+  
+  .chart-header .toggle-switch {
+    flex-shrink: 0; /* Prevents the ToggleSwitch from shrinking */
+  }
+
+  
+  .glucose-sensor-analytics img {
+    width: auto; /* Adjusts width automatically */
+    max-width: calc(100% - 40px); /* Reduces the maximum width to account for horizontal margin */
+    max-height: calc(100% - 100px); /* Adjusts the max height to leave space for the button and additional vertical margin */
+    margin: 20px 20px 20px; /* Adds 20px margin to the top, left, and right sides, with specific bottom margin next */
+    margin-bottom: 40px; /* Increased bottom margin to include space between the image and the button */
+}
+
+.buttons-container {
+  display: flex; /* Aligns children (buttons) in a row */
+  justify-content: center; /* Optionally centers the buttons horizontally */
+  gap: 10px; /* Adds space between the buttons */
+}
+
+.make-prediction-button, .reset-button {
+  padding: 8px 15px; /* Reduced padding to make buttons smaller */
+  font-size: 14px; /* Slightly smaller font size */
+  font-weight: bold; /* Makes the font bold */
+  cursor: pointer; /* Changes the cursor to a pointer to indicate it's clickable */
+  border: none; /* Removes the border */
+  border-radius: 10px; /* Adds rounded corners */
+  color: #DEB992; /* Text color */
+  min-width: 120px; /* Reduced minimum width to make buttons smaller */
+  height: 40px; /* Reduced height to make buttons smaller */
+  display: flex; /* Use flexbox to center text inside the button */
+  align-items: center; /* Centers text vertically */
+  justify-content: center; /* Centers text horizontally */
+  /* Add more styling here as needed */
+}
+
+.footBox {
+  background-color: #1B2130;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  position: relative; /* Ensures absolute positioning for children */
+}
+
+.cardTitleText {
+  color: #DEB992;
+  font-size: 25px;
+  margin-top: 10px;
+  margin-bottom: 0;
+  font-weight: bold;
+  padding-bottom: 10px;
+}
+
+.footContainer {
+  position: relative; /* Use relative positioning here */
+  width: 300px; /* Adjust based on your image size */
+  height: 300px; /* Set a height for your container */
+  margin: 0 auto; /* Center container */
+  display: flex; /* Use flexbox to center the image */
+  align-items: center; /* Align image vertically */
+  justify-content: center; /* Align image horizontally */
+}
+
+.footIcon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(80deg); /* Adjusts position and rotation */
+  width: auto; /* Adjust to not exceed the container width */
+  height: 160%; /* Adjust to not exceed the container height */
+ 
+}
+
+.regionContainer {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 50px;
+  margin-top: -180px;
+}
+
+.regionButton {
+  background-color: #1A1A1A;
+  color: #DEB992;
+  padding: 5px 6px;
+  border-radius: 60px;
+  margin: 5px;
+  border: none;
+  cursor: pointer;
+}
+
+.regionButton1 { margin-top: 230px; margin-left: 0px; margin-right: 300px; }
+.regionButton2 { margin-right: 190px; margin-top: -50px; }
+.regionButton3 { margin-right: 80px; margin-top: -55px; }
+.regionButton4 { margin-top: -60px; margin-left: 25px;}
+.regionButton5 { margin-left: 94px; }
+.regionButton6 { margin-left: 125px; }
+
+.selectedToggle {
+  background-color: #1BA098;
+}
+
+  
+  
+  @media (max-width: 768px) {
+    /* Adjust layout for smaller screens */
+    .top-row, .bottom-row {
+      flex-direction: column;
+    }
+  
+    .card, .chart {
+      width: 100%; /* Full width on smaller screens */
+    }
+  
+    .current-glucose-level {
+      width: 100%; /* Full width for the glucose level card on smaller screens */
+    }
+  }

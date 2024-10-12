@@ -1,0 +1,28 @@
+{
+  "files": {
+    "main.css": "/static/css/main.23395cab.css",
+    "main.js": "/static/js/main.f86f4bd5.js",
+    "static/js/787.1937f22b.chunk.js": "/static/js/787.1937f22b.chunk.js",
+    "static/media/blood.png": "/static/media/blood.f4f003e052449a8ead17.png",
+    "static/media/month.png": "/static/media/month.ed0269154b94a8b25f6f.png",
+    "static/media/sweat.png": "/static/media/sweat.1ab40a68325173584acb.png",
+    "static/media/week.png": "/static/media/week.84cafdc68915ef1299c6.png",
+    "static/media/outlook.png": "/static/media/outlook.0f10e2393be8a846a1b4.png",
+    "static/media/day.png": "/static/media/day.814b976ce20236d40bd1.png",
+    "static/media/logo.png": "/static/media/logo.4973287f1efe1c220761.png",
+    "static/media/feet.png": "/static/media/feet.d3314afbd8164188338b.png",
+    "static/media/foot.png": "/static/media/foot.dc17bac88ceb2e51cb52.png",
+    "static/media/barchart.png": "/static/media/barchart.f44c588b7633dc1e281b.png",
+    "static/media/linechart.png": "/static/media/linechart.71bd15b9a7f98e1a3df0.png",
+    "static/media/piechart.png": "/static/media/piechart.cc7a30a46e9e109b601e.png",
+    "static/media/google.png": "/static/media/google.fd874bd47b1270467697.png",
+    "index.html": "/index.html",
+    "main.23395cab.css.map": "/static/css/main.23395cab.css.map",
+    "main.f86f4bd5.js.map": "/static/js/main.f86f4bd5.js.map",
+    "787.1937f22b.chunk.js.map": "/static/js/787.1937f22b.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.23395cab.css",
+    "static/js/main.f86f4bd5.js"
+  ]
+}

@@ -1,0 +1,201 @@
+/* Container for the entire page */
+.signup-page-container {
+    display: flex;
+    height: 100vh;
+    background-color: #051622;
+  }
+  
+  /* Container for the image section, taking up the left 50% */
+  .signup-image-section {
+    width: 50%; /* Explicitly set the width to 50% */
+    display: flex;
+    justify-content: center; /* Center the content horizontally */
+    align-items: center; /* Center the content vertically */
+    background: #051622; /* Assuming this is the background color for the image section */
+  }
+  
+  /* Style for the image itself */
+  .signup-image-section img {
+    max-width: 100%;
+    max-height: 100%;
+  }
+  
+  .social-signup {
+    display: flex; /* Aligns children (buttons) in a row */
+    justify-content: space-between; /* Distributes space between buttons */
+  }
+  
+  /* Styles for logos inside the buttons */
+  .social-signup img {
+    margin-right: 10px; /* Space between the logo and text */
+    width: auto; /* Auto-width for scaling */
+    height: 40px; /* Adjust the height to fit the button */
+    object-fit: contain; /* Ensures the image's aspect ratio is preserved */
+  }
+  
+  
+  /* Container for the form, taking up the right 50% */
+  .signup-form-container {
+    width: 95%; /* Explicitly set the width to 50% */
+    display: flex;
+    justify-content: center; /* Center the form in the middle of the right half */
+    align-items: center;
+    padding: 40px; /* Add padding as needed */
+    background-color: #DEB992;
+    border-radius: 25px;
+  }
+  
+  /* Styles for the form card */
+  .signup-form {
+    background: #DEB992;
+    border-radius: 10px;
+    width: 80%; /* Form should fill the container */
+    max-width: 600px;
+    padding: 40px; /* Padding inside the form */
+    margin: 0; /* Override any default margins */
+  }
+  
+  /* ...rest of your styles for h2, buttons, inputs... */
+  
+  
+  /* Container for the form, taking up the right half */
+  .signup-form-section {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #051622; /* Optional: if you want a background color for the form section */
+  }
+  
+  /* Heading inside the form */
+  .signup-form h1 {
+    font-size: 2.5rem;
+    text-align: center;
+    font-weight: bold;
+    margin-bottom: 2rem;
+  }
+  
+  .signup-form input::placeholder {
+    color: #555; /* Dark grey color; adjust as needed */
+    opacity: 1; /* Full opacity */
+    font-weight: bold;
+  }
+  
+  /* Social signup buttons */
+  .social-signup button {
+    padding: 10px 15px; /* Padding inside the buttons */
+    margin-right: 10px; /* Adds space between the buttons */
+    border-radius: 5px;
+    cursor: pointer;
+    color: #000000; /* Golden text color */
+    background-color: transparent; /* Transparent background */
+    border: 2px solid black; /* Black border */
+    display: flex; /* To align the logo and text */
+    align-items: center; /* Centers items vertically */
+    justify-content: center; /* Centers items horizontally */
+    flex: 1; /* Allows buttons to grow and take equal space */
+    font-weight: bold;
+  }
+  
+  /* To prevent the last button from having margin on the right */
+  .social-signup button:last-child {
+    margin-right: 0;
+  }
+  
+  /* Google signup button */
+  .google-signup {
+    background-color: #00a699;
+    color: white;
+  }
+  
+  /* Outlook signup button */
+  .outlook-signup {
+    background-color: #00a699;
+    color: white;
+  }
+  
+  /* Divider in the form */
+  .divider {
+    text-align: center;
+    margin: 25px 0;
+    position: relative;
+    margin-bottom: 2rem;
+  }
+  
+  /* Span within the divider */
+  .divider span {
+    background: #DEB992;
+    position: relative;
+    z-index: 1;
+    padding: 0 10px;
+  }
+  
+  /* Line for the divider */
+  .divider::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 2px;
+    background: #000000;
+    z-index: 0;
+  }
+  
+  /* Form elements */
+  .signup-form form {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between; /* This spreads out the children evenly */
+    height: 100%; /* You can set a specific height if you want to control the space distribution */
+  }
+  
+  /* Input fields */
+  .signup-form input {
+    padding: 15px;
+    margin-bottom: 20px;
+    border: 2px solid #000000;
+    border-radius: 5px;
+    background-color: #DEB992;
+    color: #000000;
+    margin-bottom: 2rem;
+    font-weight: bold;
+  }
+  
+  /* Submit button */
+  .create-account-button {
+    background-color: #00a699;
+    color: white;
+    border: none;
+    padding: 15px;
+    border-radius: 5px;
+    font-size: 16px;
+    cursor: pointer;
+    margin-top: 2rem;
+  }
+  
+  /* Footer text */
+  .signup-footer {
+    text-align: center;
+    margin-top: 20px;
+  }
+  
+  /* Footer paragraph */
+  .signup-footer p {
+    color: #333;
+    padding-top: 2rem;
+  }
+  
+  /* CSS */
+  .signup-footer a {
+    color: black; /* Change the color to black */
+    text-decoration: none; /* Remove the underline */
+    transition: color 0.3s ease-in-out; /* Add a smooth color transition on hover */
+  }
+  
+  .signup-footer a:hover {
+    color: #00a699; /* Change the color on hover to a different color */
+    text-decoration: none; /* Remove underline on hover */
+  }
+  

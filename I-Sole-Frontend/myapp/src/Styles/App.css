@@ -1,0 +1,438 @@
+/* Basic reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+
+  &::-webkit-scrollbar {
+    width: 12px; /* Width of the scrollbar */
+    border-radius: 10px; /* Rounded corners for the scrollbar */
+    background-color: transparent; /* Transparent background on the scrollbar itself */
+  }
+
+  &::-webkit-scrollbar-track {
+    background-color: transparent; /* Transparent track */
+    border-radius: 10px; /* Rounded corners on the track */
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: #00a699; /* Your desired shade of green for the thumb */
+    border-radius: 10px; /* Rounded corners on the thumb */
+    border: 3px solid #022b3a; /* Space between thumb and track */
+  }
+}
+
+body, html {
+  font-family: 'Arial', sans-serif;
+  font-size: 14px;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  justify-content: center;
+  align-items: center;
+  min-width: 100%;
+  background: #051622; /* Dark background */
+}
+
+.main-container {
+  display: flex;
+  flex-direction: column; /* Stack children vertically inside the main container */
+  
+  flex: 1; /* Take up all available space besides the sidebar */
+  height: 100%; /* Full height */
+}
+
+.sidebar {
+  width: 250px;
+  background-color: #1B2130;
+  color: white;
+  overflow-y: auto; /* Scrollable if content overflows */
+  padding: 15px;
+}
+
+.content {
+  flex: 1;
+  background-color: #051622;
+  padding: 20px;
+  overflow-y: auto;
+
+  /* Custom scrollbar for Chrome, Safari and Opera */
+  &::-webkit-scrollbar {
+    width: 12px; /* Width of the scrollbar */
+    border-radius: 10px; /* Rounded corners for the scrollbar */
+    background-color: transparent; /* Transparent background on the scrollbar itself */
+  }
+
+  &::-webkit-scrollbar-track {
+    background-color: transparent; /* Transparent track */
+    border-radius: 10px; /* Rounded corners on the track */
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: #00a699; /* Your desired shade of green for the thumb */
+    border-radius: 10px; /* Rounded corners on the thumb */
+    border: 3px solid #022b3a; /* Space between thumb and track */
+  }
+
+}
+
+.feedback-message {
+  background-color: #1BA098; /* Main color */
+  color: #DEB992; /* Contrast color */
+  padding: 15px;
+  border-radius: 8px; /* Slightly more rounded */
+  margin-bottom: 15px; /* Increase space between messages */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15); /* Subtle shadow for depth */
+  border: 1px solid #0e7c7b; /* Slightly darker border for definition */
+  transition: transform 0.2s ease, box-shadow 0.2s ease; /* Smooth transition for hover effect */
+}
+
+.feedback-message:hover {
+  transform: translateY(-3px); /* Subtle lift effect on hover */
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25); /* Stronger shadow on hover */
+}
+
+/* Add a pseudo-element for a cool visual effect */
+.feedback-message::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: inherit; /* Match the border radius of the parent */
+  border: 1px solid rgba(255, 255, 255, 0.2); /* Light border for a glossy effect */
+  pointer-events: none; /* Ensure it doesn't interfere with clicking */
+}
+
+/* Make sure the feedback message container has position: relative; */
+.feedback-message {
+  position: relative;
+  overflow: hidden; /* Ensure pseudo-elements don't overflow */
+}
+
+
+.message-header {
+  display: flex;
+  justify-content: space-between; /* This will push the children to either end */
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.doctor-info {
+  display: flex;
+  align-items: center;
+  background-color: #0c0c0c62; /* The background color from your image */
+  padding: 4px 8px; /* Adjust padding as needed */
+  border-radius: 8px; /* Adjust border-radius for roundness */
+  color: DEB992; /* Text color */
+  /* If you want the doctor info to not stretch, add: */
+  flex-shrink: 0;
+  font-weight: bold;
+}
+
+
+.doctor-icon {
+  margin-right: 5px; /* Space between icon and text */
+  /* Add styles for the icon if needed */
+}
+
+.message-details {
+  display: flex;
+  align-items: center;
+}
+
+.message-index {
+  background-color: #bfd5e4;
+  border-radius: 50%;
+  width: 25px;
+  height: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px; /* Adds space between index and date */
+  color: #444b4d;
+  font-weight: bold;
+}
+
+.message-date {
+  color: #DEB992;
+  background-color: #0c0c0c62; /* The background color of the badge */
+  padding: 2px 8px; /* Adjust padding to your liking */
+  border-radius: 8px; /* Fully rounded corners */
+  display: inline-block;
+  margin-left: 10px; /* Optional: adds space between the index and date */
+  font-weight: bold;
+}
+
+
+.message-body {
+  margin-top: 10px;
+  font-weight: 600;
+}
+
+form {
+  margin-top: 20px;
+}
+
+textarea {
+  width: 100%;
+  padding: 15px; /* Increased padding for larger touch area */
+  border-radius: 8px; /* Smooth, rounded corners */
+  margin-bottom: 20px; /* Increased space below for separation */
+  height: 150px; /* Fixed height */
+  resize: vertical; /* Allow only vertical resizing */
+  border: 2px solid black;
+  background: #DEB992; /* Light background */
+  font-weight: bold; /* Normal font weight for better readability */
+  color: black; /* Darker font color for contrast */
+  box-shadow: 0 4px 8px rgba(112, 111, 111, 0.15);
+  transition: border-color 0.3s, box-shadow 0.3s; /* Smooth transitions for interactive states */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.65);
+}
+
+/* Focus state */
+textarea:focus {
+  outline: none; /* Remove default focus outline */
+  border-color: #10887F; /* Accent color for focus state */
+  box-shadow: 0 0 0 3px rgba(16, 136, 127, 0.3); /* Glow effect on focus */
+}
+
+textarea::placeholder {
+  color: black; /* or #000000 for black */
+  font-weight: bolder;
+  opacity: 1; /* Optional: Firefox reduces the opacity by default */
+}
+
+button {
+  padding: 10px 20px;
+  background-color: #1BA098;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #0a4743;
+}
+
+.feedback-form-container {
+  background: #051622; /* Your chosen color for the feedback form */
+  padding: 20px;
+  /* Make sure this container is not flex or you need to set flex: none; */
+}
+
+.send-button {
+  width: 100%; /* Button takes up 100% of the form width */
+  padding: 10px;
+  border-radius: 4px;
+  border: none;
+  background-color: #1BA098; /* Adjust color as needed */
+  color: white;
+  cursor: pointer;
+  /* Other styles */
+}
+
+.sidebar {
+  width: 250px; /* Adjust width as needed */
+  background-color: #1B2130;
+  color: white;
+  padding-left: 0; /* Adjust or remove padding as needed */
+  padding-right: 0;
+  display: flex;
+  flex-direction: column; /* Stack items vertically */
+  align-items: center; /* Center items */
+}
+
+.sidebar-logo {
+  margin-bottom: 50px; /* Space below the logo */
+}
+
+.sidebar-nav ul {
+  list-style: none;
+  padding: 0;
+  width: 100%;
+  
+}
+
+.sidebar-nav li {
+  margin: 0.5rem 0; /* Spacing between nav items */
+}
+
+.sidebar-nav li a {
+  display: block;
+  padding: 12px 20px; /* Slightly more horizontal padding */
+  color: #DEB992;
+  text-decoration: none;
+  font-size: 18px; /* Increase font size for better visibility */
+  border-radius: 10px; /* More pronounced rounded corners for a modern look */
+  
+  
+  transition: all 0.3s ease; /* Smooth transition for all animatable properties */
+  position: relative; /* Position relative for pseudo-elements */
+  overflow: hidden; /* Hide overflow for pseudo-elements */
+  font-weight: bold;
+}
+
+.sidebar-nav li a::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%; /* Start from the left */
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, #fff5, transparent); /* Light line gradient */
+  transition: all 0.3s ease;
+}
+
+.sidebar-nav li a:hover::after {
+  left: 100%; /* End to the right */
+}
+
+.sidebar-nav li a:hover,
+.sidebar-nav li a.active {
+  background-color: #1BA098; /* Highlight color on hover/active */
+  transform: translateX(10px); /* Slide effect on hover */
+}
+
+.sidebar-nav li a:hover {
+  box-shadow: 3px 3px 6px #0003, -3px -3px 6px #fff5; /* Outer shadow for a "lifting" effect */
+}
+
+.sidebar-nav li a.active::before {
+  content: '• '; /* Unicode character for bullet */
+  position: absolute;
+  left: 10px;
+  color: #FFD700; /* Gold color for active item indicator */
+  font-size: 24px; /* Larger size for visibility */
+  line-height: 0; /* Adjust line height to fit the bullet */
+}
+
+.sidebar-profile-pic {
+  width: 40px; /* Adjust width as needed */
+  height: 40px; /* Adjust height as needed */
+  border-radius: 50%; /* Make it round */
+  margin-left: auto; /* Add space between the image and the name */
+  box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.2); /* Add a subtle box shadow */
+  border: 2px solid #ffffff; /* Add a white border */
+}
+
+
+.sidebar-profile {
+  display: flex;
+  align-items: center;
+  justify-content: start;
+  background-color: #2c3e50; /* Use the color that fits your design */
+  padding: 10px;
+  width: 100%;
+  border-radius: 20px; /* No rounded corners */
+  margin-top: auto; /* Push to the bottom of the sidebar */
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45); /* Stronger shadow on hover */
+}
+
+.sidebar-profile-name {
+  /* Your existing styles */
+  margin-right: auto; /* This will push all elements to the right */
+  font-weight: bold;
+  color: #DEB992;
+  margin-left: auto;
+}
+
+.signout-button {
+  background: none; /* Removes the default button background */
+  border: none; /* Removes the default button border */
+  color: white; /* Adjust the color to fit your design */
+  cursor: pointer; /* Changes the cursor to a pointer on hover */
+  font-size: 16px; /* Adjust the size as needed */
+  padding: 0 10px; /* Adjust the padding as needed */
+}
+
+.sidebar-logo img {
+  max-width: 100%;  /* This ensures the logo is not wider than the sidebar */
+  height: auto;     /* This maintains the aspect ratio of the image */
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 100%; /* Full width on small screens */
+    height: auto; /* Let the sidebar height be automatic to fit its content */
+    padding: 15px 0; /* Adjust padding as needed */
+  }
+
+  .main-container {
+    flex-direction: column; /* Ensure stacking on small screens */
+  }
+
+  .app {
+    flex-direction: column; /* Stack sidebar and main content on top of each other on small screens */
+  }
+
+  .content,
+  .feedback-form-container {
+    padding: 10px; /* Smaller padding on small screens */
+  }
+
+  .sidebar-nav li a {
+    padding: 10px; /* Smaller padding for nav items on small screens */
+    font-size: 16px; /* Smaller font size for nav items on small screens */
+  }
+
+  .sidebar-profile {
+    flex-direction: column; /* Stack profile elements on top of each other */
+    align-items: center; /* Center align items */
+    margin-top: 20px; /* Add space on top of the profile section */
+  }
+
+  .sidebar-profile-pic {
+    margin-bottom: 10px; /* Space between image and name when stacked */
+    margin-right: 0; /* Reset margin since it's now stacked */
+  }
+
+  .sidebar-profile-name {
+    margin-right: 0; /* Reset margin since it's now stacked */
+  }
+
+  .signout-button {
+    padding: 5px 10px; /* Adjust padding as needed */
+  }
+}
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.overlay-content {
+  margin: auto;
+  background: #1B2130; /* Updated background color */
+  border-radius: 10px;
+  padding: 20px;
+  /* Ensure text is visible with a light color if your background is dark */
+  color: #ffffff; 
+}
+
+.overlay img {
+  max-width: 80%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+
+/* You might also want to add media queries for even smaller screens */
+@media (max-width: 480px) {
+  /* Adjust font sizes, padding, and any other properties for very small screens */
+}
